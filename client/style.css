@@ -1,0 +1,38 @@
+.taf-component-container {
+    position: absolute;
+    background-color: black;
+    width: 800px;
+    height: 600px;
+}
+
+.taf-annotation-layer {
+    padding: 10px;
+    margin: 0px;
+    font-family: monospace;
+    font-size: 1.2em;
+    color: rgb(136, 136, 136);
+    z-index: 0;
+}
+
+.taf-input-layer {
+    padding: 10px;
+    width: 100%;
+    height: 100%;
+    margin: 0px;
+    font-family: monospace;
+    font-size: 1.2em;
+    position: relative;
+    border: none;
+    outline: none;
+    resize: none;
+    /* height: 100%;
+    width: 100%; */
+    color: aliceblue;
+    text-transform: uppercase;
+    z-index: 1;
+    background-color: transparent;
+}
+
+.taf-input-layer::-webkit-scrollbar {
+    display: none;
+}
