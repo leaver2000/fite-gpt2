@@ -44,4 +44,9 @@ Setting `pad_token_id` to `eos_token_id`:50256 for open-end generation.
 [{'generated_text': 'TAF KRAP 08006KT 9999 FEW020 QNH2994INS\nBECMG 08006KT 9999 FEW030 QNH2994INS\nBECMG 08006KT 9999 FEW030 QNH2994INS\nBECMG 08006KT 9999 FEW030 QNH2994INS\nBECMG 08006KT 9999 FEW030 QNH2994INS\nBECMG 08006KT 9999 FEW030 QNH2994INS\nBECMG 08006KT 9999 FEW'}]
 ```
 
+## client
+
+![image](https://user-images.githubusercontent.com/76945789/203187237-31a110a3-c340-4995-a24a-8be634f8c587.png)
+
+## server
 ![image](https://user-images.githubusercontent.com/76945789/203183599-ba4adad0-d87b-407a-94ac-d9acb2c19d08.png)
