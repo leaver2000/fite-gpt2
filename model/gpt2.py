@@ -1,6 +1,35 @@
 # standard library imports
 """
-https://huggingface.co/transformers/v2.0.0/examples.html#gpt-2-gpt-and-causal-language-modeling
+# gpt2-taf
+
+## Description
+
+This is a project to train the GPT-2 model for TAF autocompletion.
+provided with a partial TAF, the model will attempt to generate the rest of the TAF.
+
+GPT-2 uses multi-layer transformers to generate text.
+
+## Drawbacks
+
+GPT-2 are that is is uni-directional and can only complete left to right.
+with a TAF this presents some challenges as the max and min temperature group come at
+the end of the forecast.  The model may be able to better resolve present weather
+predictions if the max and min temperature are provided first.
+
+
+## TODO:
+- [ ] increase the size of the training dataset
+- [ ] add labels to the dataset
+- [ ] pad tokens into the dataset
+- [ ] add a classification head to the model
+- [ ] add a regression head to the model
+- [ ] add a sequence classification head to the model
+- [ ] add a token classification head to the model
+
+
+references:
+https://medium.com/@gauravghati/comparison-between-bert-gpt-2-and-elmo-9ad140cd1cda
+https://huggingface.co/transformers/model_doc/gpt2.html
 
 
 ``` bash
@@ -44,10 +73,11 @@ Versions of relevant libraries:
 [conda] Could not collect
 ```
 
+A specific version of pytorch was required for my build of the model
+
 ``` bash
 pip install torch==1.13.0+cu117 -f https://download.pytorch.org/whl/torch_stable.html
 ```
-
 """
 import os
 
@@ -82,6 +112,7 @@ from .util import (
 VERSION = "0.0.2"
 PRE_TRAINED_MODEL_NAME = "gpt2"
 DATASET_PREP_METHOD = "taf-full"
+PYTORCH_FRAMEWORK = "pt"
 MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-{DATASET_PREP_METHOD}"
 MODEL_PATH, DATASET_PATH = unpack_paths(MODEL_NAME, VERSION)
 BATCH_SIZE = 8
@@ -93,7 +124,7 @@ tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
 tokenizer.add_special_tokens(SpecialTokens.to_dict())
 
 
-def create_tokenized_dataset() -> DatasetDict:
+def create_tokenized_dataset() -> None:
     """Create a tokenized dataset from the raw text data"""
 
     def batch_encode(batch: Batch) -> BatchEncoding:
@@ -109,7 +140,6 @@ def create_tokenized_dataset() -> DatasetDict:
         .reset_index(drop=True)
         .to_frame()
     )
-
     # create labels for classification
     # TODO: add labels to the dataset
     # df["labels"] = np.where(df.text.str.startswith("TAF"), 1, 0)
@@ -125,29 +155,28 @@ def create_tokenized_dataset() -> DatasetDict:
     # tokenize dataset with batch encoding using the tokenizer
     ds = ds.map(batch_encode, batched=True, batch_size=BATCH_SIZE)
     ds.save_to_disk(DATASET_PATH)  # type: ignore
-    return ds
 
 
 def fine_tune_model() -> None:
+    """Fine tune the model on the tokenized dataset"""
     torch.cuda.empty_cache()
-    # base model
+    # gpt2 config
     configuration = GPT2Config(
         activation_function="gelu_new",
         layer_norm_eps=1e-05,
     )
+    # load base model
     model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(
         PRE_TRAINED_MODEL_NAME,
         config=configuration,
-    ).cuda( # type: ignore
+    ).cuda(  # type: ignore
         device
-    ) 
+    )
     # resize the embedding layer to match the new vocabulary size
     model.resize_token_embeddings(len(tokenizer))
-    # tokenized dataset
     if not DATASET_PATH.exists():
         # if dataset does not exist, create it
         create_tokenized_dataset()
-    # ###  Trainer Setup ###
     # load the dataset
     tokenized_ds = DatasetDict.load_from_disk(DATASET_PATH)  # type: ignore
     # configure the trainer arguments
@@ -177,7 +206,7 @@ def fine_tune_model() -> None:
         tokenizer=tokenizer,
         mlm=False,
         mlm_probability=0.15,
-        return_tensors="pt",
+        return_tensors=PYTORCH_FRAMEWORK,
         pad_to_multiple_of=3,
     )
     # create trainer
@@ -195,32 +224,34 @@ def fine_tune_model() -> None:
     model.save_pretrained(MODEL_PATH)  # type: ignore
 
 
-def main(text:str) -> None:
+def main(text: str) -> None:
     if not MODEL_PATH.exists():
         # if a new model is being trained fine tune the model
         fine_tune_model()
     # load the model from the saved path
     model = GPT2LMHeadModel.from_pretrained(MODEL_PATH).cuda(device)  # type: ignore
 
-    pipeline = TextGenerationPipeline(
+    pipe = TextGenerationPipeline(
         model=model,  # PreTrainedModel
         tokenizer=tokenizer,  # PreTrainedTokenizer
         device=device,  # torch.device
-        framework="pt",  # Literal["pt", "tf"]
-        temperature=.2,  # strictly positive float
+        PYTORCH_FRAMEWORK=PYTORCH_FRAMEWORK,  # Literal["pt", "tf"]
+        temperature=0.2,  # strictly positive float
         top_k=100,  # int
         top_p=0.1,  # float
         # repetition_penalty=2.0,  # float
         # do_sample=True,  # bool
     )
-    
-    print(pipeline(text, max_length=MAX_LENGTH))
+
+    print(pipe(text, max_length=MAX_LENGTH))
 
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT")
+    parser.add_argument(
+        "--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT"
+    )
     args = parser.parse_args()
     main(args.text)
-

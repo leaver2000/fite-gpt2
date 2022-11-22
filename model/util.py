@@ -197,7 +197,6 @@ def create_tokenized_dataset(prep_method: DSPrepMethod, batch_size: int) -> None
     ds.save_to_disk(DATASET_PATH)  # type: ignore
 
 
-
 AddedTokenType = str | AddedToken
 
 

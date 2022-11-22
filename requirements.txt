@@ -4,3 +4,6 @@ torch==1.13.0+cu117
 pyarrow==10.0.0
 transformers==4.24.0
 tokenizers==0.13.2
+# server dependencies
+fastapi==0.87.0
+uvicorn==0.20.0
