@@ -310,9 +310,9 @@ class CodePredictionPipeline:
 
         self.__pipeline = TextGenerationPipeline(**dataclasses.asdict(self))
 
-    def predict(self, text: str | list[str], **kwargs):
+    def predict(self, text: str | list[str], **kwargs) -> list[dict[str,str]|list[dict[str,str]]]:
         result = self.__pipeline(text, **kwargs)
-        return result
+        return result # type: ignore
         # if verbose:
         #     print(result)
         # response, *_ = re.split(r"(?<=QNH\d{4}INS)", result["generated_text"]) # type: ignore
