@@ -327,84 +327,11 @@ def generate_json_lines(
 
 
 if __name__ == "__main__":
-    # test_tokenizer()
-    if True:
-        import argparse
+    import argparse
 
-        parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT"
-        )
-        args = parser.parse_args()
-        main(args.text)
-    else:
-        test_tokenizer()
-        # tds.to_json_lines(split_each_line=True).to_frame()
-
-        # s = pd.DataFrame(full_tafs.lines + split_lines.lines)
-        # print(s)
-        # d = (full_tafs. + split_lines)
-        # s = pd.Series(lines).str.strip()
-        # ds = JSONLines.load("store/training-taf-data.jsonl")#.to_dataset_dict()
-        # ds = TAFDataset(ds)
-        # ds = ds.map(
-        #     lambda x: tokenizer(x["prompt"], truncation=True, padding=True),
-        #     batched=True,
-        #     batch_size=BATCH_SIZE,
-        # ).map(
-        #     lambda x: tokenizer(x["completion"], truncation=True, padding=True),
-        #     batched=True,
-        #     batch_size=BATCH_SIZE,
-        # )
-        # print(ds["train"][0])
-        # print(ds["validation"][0])
-        # print(ds["test"][0])
-        # print(ds["train"][0]["prompt"])
-        # print(ds["train"][0]["completion"])
-        # print(ds["train"][0]["prompt"].shape)
-        # print(ds["train"][0]["completion"].shape)
-        # print(ds["train"][0]["prompt"].dtype)
-        # print(ds["train"][0]["completion"].dtype)
-        # print(ds["train"][0]["prompt"].device)
-        # print(ds["train"][0]["completion"].device)
-        # print(ds["train"][0]["prompt"].is_cuda)
-        # print(ds["train"][0]["completion"].is_cuda)
-        # print(ds["train"][0]["prompt"].is_sparse)
-        # print(ds["train"][0]["completion"].is_sparse)
-        # print(ds["train"][0]["prompt"].is_quantized)
-        # print(ds["train"][0]["completion"].is_quantized)
-        # print(ds["train"][0]["prompt"].is_pinned())
-        # print(ds["train"][0]["completion"].is_pinned())
-        # print(ds["train"][0]["prompt"].requires_grad)
-        # print(ds["train"][0]["completion"].requires_grad)
-        # print(ds["train"][0]["prompt"].is_leaf)
-        # print(ds["train"][0]["completion"].is_leaf)
-        # print(ds["train"][0]["prompt"].retain_grad())
-        # print(ds["train"][0]["completion"].retain_grad())
-        # print(ds["train"][0]["prompt"].grad)
-        # print(ds["train"][0]["completion"].grad)
-        # print(ds["train"][0]["prompt"].grad_fn)
-        # print(ds["train"][0]["completion"].grad_fn)
-        # print(ds["train"][0]["prompt"].data)
-        # print(ds["train"][0]["completion"].data)
-        # print(ds["train"][0]["prompt"].data_ptr
-        # ds = TAFDataset.load()
-        # df = JSONLines.load(
-        #     "store/training-taf-data.jsonl",
-        #     # strip_temps=True,
-        #     # include_wnd_aft_rmk=False,
-        # ).to_frame()
-        # full = df.prompt + " " + df.completion
-        # print(full.sample(10).values)
-        # print(
-        #     df.drop(
-        #         df.index[
-        #             df.prompt.str.contains("WND") | df.completion.str.contains("WND")
-        #         ]
-        #     )
-        #     .completion.str.contains("WND")
-        #     .any()
-        # )
-        # df["completion"] = df.completion.str.replace(r"\sTX(M)?\d{2}\/\d{4}Z\sTN(M)?\d{2}\/\d{4}Z", "", regex=True)
-        # print(df.loc[~df.prompt.str.contains("WND") | ~df.completion.str.contains("WND"),:])
-        # # print(any(df.completion==""))
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT"
+    )
+    args = parser.parse_args()
+    main(args.text)
