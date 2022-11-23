@@ -50,9 +50,7 @@ pip install torch==1.13.0+cu117 -f https://download.pytorch.org/whl/torch_stable
 
 """
 import os
-import re
 
-# keep tensorflow quiet
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 # general imports
 import torch
@@ -84,17 +82,16 @@ from .util import (
 )
 
 # RUNTIME VARIABLES
+# NOTE: changing theses variables will will trigger a retraining of the model and a new dataset
 VERSION = "0.0.3dev-8"
 PRE_TRAINED_MODEL_NAME = "gpt2"
 DATASET_PREP_METHOD = "taf-completion"
-FRAMEWORK = "pt"
 MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-{DATASET_PREP_METHOD}"
 MODEL_PATH, DATASET_PATH = unpack_paths(MODEL_NAME, VERSION)
-BATCH_SIZE = 8
-# define the device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
 
 # Hyper-parameters
+FRAMEWORK = "pt"
+"Framework to use for training. Either 'pt' for PyTorch or 'tf' for TensorFlow."
 REPETITION_PENALTY = 1.8
 "repetition penalty is a hyperparameter that controls the model's repetition of the same token. The higher the value, the more repetitive the text will be."
 TEMPERATURE = 1.0
@@ -105,6 +102,9 @@ TOP_P = 0.9
 "top_p is a hyperparameter that controls the number of tokens that the model will consider when predicting the next token. The higher the value, the more random the text will be."
 MAX_LENGTH = 120
 "max_length is a hyperparameter that controls the maximum length of the generated text. The higher the value, the longer the text will be."
+BATCH_SIZE = 8
+# define the device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
 
 
 vocab_dict = {}
