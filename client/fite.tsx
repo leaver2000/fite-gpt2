@@ -2,18 +2,19 @@ import React from 'react';
 import './style.css';
 
 const TAF_STRING = [
-  `\
-TAF KADW 280100Z 0701/0807 01010KT 8000 TSRA BKN030CB QNH2902INS
+  {generated_text:`\
+TAF KBLV 280100Z 2801/2807 01012G18KT 9999 BKN030 QNH2902INS
 BECMG 0704/0705 01015G17KT 9999 BKN020 BKN025 QNH2902INS
-BECMG 0705/0706 VRB06KT 9999 BKN020 QNH2902INS TX13/0421Z TNM03/0508Z`,
-  `\
-TAF KADW 280200Z 0701/0807 01010KT 8000 TSRA BKN030CB QNH2902INS
+BECMG 0705/0706 VRB06KT 9999 BKN020 QNH2902INS TX13/0421Z TNM03/0508Z`},
+ {generated_text: `\
+TAF KBLV 280100Z 2801/2807 01015G20KT 8000 TSRA BKN030CB QNH2902INS
 BECMG 0704/0705 01015G17KT 9999 BKN020 BKN025 QNH2902INS
-BECMG 0705/0706 VRB06KT 9999 BKN020 QNH2902INS TX13/0421Z TNM03/0508Z`
+BECMG 0705/0706 VRB06KT 9999 BKN020 QNH2902INS TX13/0421Z TNM03/0508Z`}
 ]
+type GeneratedText = {generated_text:string}
 interface FITEState {
   taf: string;
-  suggestionsList: string[];
+  suggestionsList: GeneratedText[];
   suggestionIndex: number;
   start: number;
   end: number;
@@ -26,9 +27,9 @@ type FITEActionState = FITEState & {
   handleKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   handleChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
 }
-function initilazieState(): FITEState {
+function initializeState(): FITEState {
   return {
-    taf: "TAF ",
+    taf: "TAF KBLV 280100Z 2801/2807 01012G18KT",
     suggestionsList: TAF_STRING,
     suggestionIndex: 0,
     start: 0,
@@ -39,10 +40,30 @@ function initilazieState(): FITEState {
 
 function useFITE(): FITEActionState {
 
-  const [state, dispatchState] = React.useState<FITEState>(initilazieState);
+  const [state, dispatchState] = React.useState<FITEState>(initializeState);
   const { taf, start, end, suggestionsList, suggestionIndex } = state;
   const setState = React.useCallback((state: PartialState) => dispatchState(prevState => ({ ...prevState, ...state })), [dispatchState]);
-  const suggestion = React.useMemo(() => state.suggestionsList[state.suggestionIndex], [state.suggestionsList, state.suggestionIndex]);
+  const suggestion = React.useMemo(() => state.suggestionsList[state.suggestionIndex].generated_text, [state.suggestionsList, state.suggestionIndex]);
+
+
+  React.useEffect(() => {
+    const url = 'http://localhost:8000/generate/'
+    const options =  {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({userInput: taf })
+      // body: {generated_text: taf}
+  }
+    if (taf.endsWith(' ')) {
+
+      fetch(url, options).then(response => response.json()).then(suggestionsList => {
+        setState({ suggestionsList})
+        // console.log(data)
+      })
+    }
+  }, [taf, setState]);
 
   const handleKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const { key, ctrlKey } = event;
@@ -57,7 +78,7 @@ function useFITE(): FITEActionState {
     }
     else if (key === 'Tab') {
       event.preventDefault();
-      setState({ taf: suggestionsList[suggestionIndex] });
+      setState({ taf: suggestionsList[suggestionIndex].generated_text });
     }
   }, [suggestionsList, suggestionIndex]);
 
@@ -76,10 +97,10 @@ function useFITE(): FITEActionState {
 
 
 function FITE() {
-  /* a text area with intelisense autocomplete
+  /* a text area with intellisense autocomplete
       that is used for writing a terminal aerodrome forecast
-      the intelisense is based the TAF_STRING above
-      the user can cycle through the intelisense options with the up and down arrow keys
+      the intellisense is based the TAF_STRING above
+      the user can cycle through the intellisense options with the up and down arrow keys
       the user can select an option by pressing tab or enter */
 
   const {

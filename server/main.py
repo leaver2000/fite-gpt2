@@ -1,15 +1,23 @@
+from typing import Any
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from model import pipeline
 
 
-class Response(BaseModel):
-    generated_text: str
+class Request(BaseModel):
+    userInput: str
 
 
 app = FastAPI()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    # allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():
@@ -17,7 +25,10 @@ async def root():
     return {"message": "Hello World"}
 
 
-@app.post("/generate/", response_model=list[Response])
-async def generate(text: str) -> list[Response]:
+@app.post("/generate/")
+def generate(request:Request):
     """post route to generate a terminal aerodrome forecast"""
-    return pipeline(text)  # type: ignore
+    print("Generating TAF for: ", request.userInput)
+    results = pipeline(request.userInput.upper())  # type: ignore
+    print("Results: ", results)
+    return [{"generated_text":result["generated_text"].upper()} for result in results] # type: ignore
