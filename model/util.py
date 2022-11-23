@@ -1,15 +1,22 @@
 import os
 import re
+import functools
 from enum import Enum
-from typing import Literal
 from pathlib import Path
+from typing import Literal, Callable, ParamSpec
+import dataclasses
 
 import pandas as pd
 import torch
-from transformers import AddedToken
-from transformers import BatchEncoding
 
-# datasets imports
+#
+from transformers import (
+    GPT2LMHeadModel,
+    GPT2Tokenizer,
+    TextGenerationPipeline,
+    AddedToken,
+    BatchEncoding,
+)
 from datasets.dataset_dict import DatasetDict
 from datasets.arrow_dataset import Dataset, Batch
 
@@ -22,18 +29,26 @@ __all__ = [
     "create_tokenized_dataset",
     "PipeLineTask",
     "SpecialTokens",
+    "RegexPatterns",
     "unpack_paths",
+    # Path constants
+    "DATASET_PATH",
+    "MODEL_PATH",
+    "RAW_TEXT",
+    "JSON_LINES_FILE",
 ]
 STORE = Path.cwd() / "store"
 DATASET_PATH = STORE / "datasets"
 MODEL_PATH = STORE / "models"
 RAW_TEXT = STORE / "training-data-v2.txt"
+JSON_LINES_FILE = STORE / "training-data-v2.jsonl"
+
 TOKEN_PATTERN = re.compile(
     r"(?<=\s\d{3})(?=\d{2,3})|(?=KT)|(?=G\d{2}KT)|(?=G\d{3}KT)|(?<=FEW|SCT|BKN|OVC)|(?<=(FEW|SCT|BKN|OVC)\d{3})(?=CB)"
 )
 
 
-class TafRegex:
+class RegexPatterns:
     # split-winds: 23015G25KT -> 230 15 G 25 KT
     WIND_GUST = r"""
     (?<=\s(\d{3}|VRB))(?=\d{2,3}(KT|G\d{2,3}KT)) # wind direction and speed
@@ -47,11 +62,42 @@ class TafRegex:
     |(?<=(FEW|SCT|BKN|OVC)\d{3})(?=CB) # before CB
     """
     TOKEN_PATTERN = re.compile(r"|".join([WIND_GUST, CLOUD_COVER]), re.VERBOSE)
+    TEMPERATURE_GROUP = r"\sTX(M)?\d{2}\/\d{4}Z\sTN(M)?\d{2}\/\d{4}Z"
     sub = TOKEN_PATTERN.sub
 
 
+### Path Functions
+P = ParamSpec("P")
 ModelPath = Path
 DatasetPath = Path
+
+
+def path_is_empty(path: Path) -> bool:
+    return path.exists() and not os.listdir(path)
+
+
+def clear_path(func: Callable[P, Path]) -> Callable[P, Path]:
+    """Decorator to clear the path before returning"""
+
+    @functools.wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Path:
+        path = func(*args, **kwargs)
+        if path.exists() and path_is_empty(path):
+            # remove the path if it exists and is empty
+            path.rmdir()
+        return path
+
+    return wrapper
+
+
+@clear_path
+def get_dataset_path(dataset_prep_method: str, version: str) -> DatasetPath:
+    return DATASET_PATH / f"{dataset_prep_method}-v{version}"
+
+
+@clear_path
+def get_model_path(model_name: str, version: str) -> ModelPath:
+    return MODEL_PATH / f"{model_name}-v{version}"
 
 
 def unpack_paths(model_name: str, version: str) -> tuple[ModelPath, DatasetPath]:
@@ -59,24 +105,6 @@ def unpack_paths(model_name: str, version: str) -> tuple[ModelPath, DatasetPath]
     model_path = get_model_path(model_name, version)
     dataset_path = get_dataset_path(model_name, version)
     return model_path, dataset_path
-
-
-def path_is_empty(path: Path) -> bool:
-    return path.exists() and not os.listdir(path)
-
-
-def get_dataset_path(dataset_prep_method: str, version: str) -> Path:
-    path = DATASET_PATH / f"{dataset_prep_method}-v{version}"
-    # if  path.exists() and path_is_empty(path) :
-    #     path.rmdir()
-    return path
-
-
-def get_model_path(model_name: str, version: str) -> Path:
-    path = MODEL_PATH / f"{model_name}-v{version}"
-    if path_is_empty(path):
-        path.rmdir()
-    return path
 
 
 def get_raw_text_data() -> str:
@@ -240,6 +268,52 @@ class SpecialTokens(TokenEnum):
     bos_token = AddedToken("<|bos|>")
     """A special token representing the beginning of a sentence. Will be associated to `self.bos_token` and added to `self.special_tokens_map`."""
     pad_token = AddedToken("<|pad|>")
+    """A special token representing a padding token. Will be associated to `self.pad_token` and added to `self.special_tokens_map`."""
     eos_token = AddedToken("<|eos|>")
+    """A special token representing the end of a sentence. Will be associated to `self.eos_token` and added to `self.special_tokens_map`."""
     sep_token = AddedToken("<|sep|>")
     """A special token representing the end of a sentence. Will be associated to `self.eos_token` and"""
+
+
+@dataclasses.dataclass
+class CodePredictionPipeline:
+    model: GPT2LMHeadModel
+    tokenizer: GPT2Tokenizer
+    device: torch.device
+    repetition_penalty: float
+    temperature: float
+    top_k: int
+    top_p: float
+    max_length: int
+    pad_token_id: int | None = None
+    eos_token_id: int | None = None
+    bos_token_id: int | None = None
+    decoder_start_token_id: int | None = None
+    do_sample: bool = True
+    num_return_sequences: int = 1
+    no_repeat_ngram_size: int = 3
+    early_stopping: bool = True
+    num_beams: int = 1
+    length_penalty: float = 1.0
+
+    use_cache: bool = True
+    num_beam_groups: int = 1
+    diversity_penalty: float = 0.0
+    clean_up_tokenization_spaces: bool = True
+
+    def __post_init__(self):
+        if self.tokenizer:
+            self.pad_token_id = self.tokenizer.pad_token_id
+            self.eos_token_id = self.tokenizer.eos_token_id
+            self.bos_token_id = self.tokenizer.bos_token_id
+            self.decoder_start_token_id = self.tokenizer.bos_token_id
+
+        self.__pipeline = TextGenerationPipeline(**dataclasses.asdict(self))
+
+    def predict(self, text: str | list[str], **kwargs):
+        result = self.__pipeline(text, **kwargs)
+        return result
+        # if verbose:
+        #     print(result)
+        # response, *_ = re.split(r"(?<=QNH\d{4}INS)", result["generated_text"]) # type: ignore
+        # return response

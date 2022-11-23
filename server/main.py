@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from model import pipeline
+from model import gpt2
 
 
 class Request(BaseModel):
@@ -29,6 +29,6 @@ async def root():
 def generate(request:Request):
     """post route to generate a terminal aerodrome forecast"""
     print("Generating TAF for: ", request.userInput)
-    results = pipeline(request.userInput.upper())  # type: ignore
+    results = gpt2.pipeline.predict(request.userInput.upper())  # type: ignore
     print("Results: ", results)
     return [{"generated_text":result["generated_text"].upper()} for result in results] # type: ignore
