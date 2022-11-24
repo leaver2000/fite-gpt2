@@ -1,198 +1,136 @@
-# standard library imports
 """
-https://huggingface.co/transformers/v2.0.0/examples.html#gpt-2-gpt-and-causal-language-modeling
 
 
-``` bash
-python -m torch.utils.collect_env
-
-Collecting environment information...
-PyTorch version: 1.13.0+cu117
-Is debug build: False
-CUDA used to build PyTorch: 11.7
-ROCM used to build PyTorch: N/A
-
-OS: Ubuntu 22.04.1 LTS (x86_64)
-GCC version: (Ubuntu 11.2.0-19ubuntu1) 11.2.0
-Clang version: Could not collect
-CMake version: version 3.22.1
-Libc version: glibc-2.35
-
-Python version: 3.10.6 (main, Nov  2 2022, 18:53:38) [GCC 11.3.0] (64-bit runtime)
-Python platform: Linux-5.10.102.1-microsoft-standard-WSL2-x86_64-with-glibc2.35
-Is CUDA available: True
-CUDA runtime version: 11.5.119
-CUDA_MODULE_LOADING set to: LAZY
-GPU models and configuration: GPU 0: NVIDIA GeForce RTX 2080 SUPER
-Nvidia driver version: 516.59
-cuDNN version: Probably one of the following:
-/usr/lib/x86_64-linux-gnu/libcudnn.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_adv_infer.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_adv_train.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_cnn_infer.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_cnn_train.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_ops_infer.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_ops_train.so.8.2.4
-HIP runtime version: N/A
-MIOpen runtime version: N/A
-Is XNNPACK available: True
-
-Versions of relevant libraries:
-[pip3] mypy-extensions==0.4.3
-[pip3] numpy==1.23.5
-[pip3] torch==1.13.0+cu117
-[conda] Could not collect
-```
-
-``` bash
-pip install torch==1.13.0+cu117 -f https://download.pytorch.org/whl/torch_stable.html
-```
 
 """
-import os
-
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-# general imports
-import torch
+import numpy as np
 import pandas as pd
-
-# transformer imports
+import torch
+from typing import Iterable
 from transformers import (
     GPT2Config,
     GPT2Tokenizer,
     GPT2LMHeadModel,
 )
-from transformers import Trainer, TrainingArguments, PreTrainedTokenizer
-from transformers import BatchEncoding, DataCollatorForLanguageModeling
-from transformers import TextGenerationPipeline
+from transformers import Trainer, TrainingArguments, AddedToken
+from transformers import DataCollatorForLanguageModeling
 
-# from tokenizers.implementations import BertWordPieceTokenizer
-# datasets imports
 from datasets.dataset_dict import DatasetDict
-from datasets.arrow_dataset import Dataset, Batch
-
-from .dataset import JSONLines
+from typing import NamedTuple
+import re
+from typing import Iterable
+from ._dataset_builder import get_dataset_dict
+from ._pipeline import CodePredictionPipeline
 from .util import (
-    SpecialTokens,
-    CodePredictionPipeline,
     unpack_paths,
-    get_raw_text_data,
-    train_test_split,
-    JSON_LINES_FILE,
+    SpecialTokens,
 )
+from pathlib import Path
 
-# RUNTIME VARIABLES
-# NOTE: changing theses variables will will trigger a retraining of the model and a new dataset
-VERSION = "0.0.3dev-8"
-PRE_TRAINED_MODEL_NAME = "gpt2"
-DATASET_PREP_METHOD = "taf-completion"
-MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-{DATASET_PREP_METHOD}"
-MODEL_PATH, DATASET_PATH = unpack_paths(MODEL_NAME, VERSION)
-
-# Hyper-parameters
+StrPath = str | Path
+# DONT CHANGE
 FRAMEWORK = "pt"
-"Framework to use for training. Either 'pt' for PyTorch or 'tf' for TensorFlow."
-REPETITION_PENALTY = 1.8
-"repetition penalty is a hyperparameter that controls the model's repetition of the same token. The higher the value, the more repetitive the text will be."
-TEMPERATURE = 1.0
-"temperature is a hyperparameter that controls the randomness of the model's predictions. The higher the value, the more random the text will be."
-TOP_K = 2
-"top_k is a hyperparameter that controls the number of tokens that the model will consider when predicting the next token. The higher the value, the more random the text will be."
-TOP_P = 0.9
-"top_p is a hyperparameter that controls the number of tokens that the model will consider when predicting the next token. The higher the value, the more random the text will be."
-MAX_LENGTH = 120
-"max_length is a hyperparameter that controls the maximum length of the generated text. The higher the value, the longer the text will be."
+PRE_TRAINED_MODEL_NAME = "gpt2"
+# VERSIONING
+MODEL_VERSION = 1
+TOKENIZER_VERSION = 5
+DATASET_VERSION = 12
+VERSION = f"0.0.3dev-{MODEL_VERSION}.{TOKENIZER_VERSION}.{DATASET_VERSION}"
+MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-taf-{VERSION}"
+MODEL_PATH, DATASET_PATH, JSON_LINES_FILE = unpack_paths(VERSION)
+# RUNTIME VARIABLES
+MAX_LENGTH = 256
 BATCH_SIZE = 8
+
+
+ADDITIONAL_TOKENS = ("\u0120TAF", "\u0120BECMG", "\u0120TEMPO")
+# TOKENS to be ignored by the tokenizer
+ADDITIONAL_SPECIAL_TOKENS = SpecialTokens.include(
+    AddedToken("LAST", single_word=True, lstrip=True, rstrip=True),
+    AddedToken("NO", single_word=True, lstrip=True, rstrip=True),
+    AddedToken("AMDS", single_word=True, lstrip=True, rstrip=True),
+    AddedToken("RMK", single_word=True, lstrip=True, rstrip=True),
+)
+# special tokens
+
+
+class HyperParameters(NamedTuple):
+    """
+    HyperParameters
+    """
+
+    repetition_penalty: float
+    "repetition penalty is a hyperparameter that controls the model's repetition of the same token. The higher the value, the more repetitive the text will be."
+    temperature: float
+    "temperature is a hyperparameter that controls the randomness of the model's predictions. The higher the value, the more random the text will be."
+    top_k: int
+    "top_k is a hyperparameter that controls the number of tokens that the model will consider when predicting the next token. The higher the value, the more random the text will be."
+    top_p: float
+    "top_p is a hyperparameter that controls the number of tokens that the model will consider when predicting the next token. The higher the value, the more random the text will be."
+
+
+HYPER_PARAMETERS = HyperParameters(
+    repetition_penalty=100.0, temperature=0.1, top_k=1, top_p=0.2
+)
+REPETITION_PENALTY, TEMPERATURE, TOP_K, TOP_P = HYPER_PARAMETERS
 # define the device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
-
-
-vocab_dict = {}
-
-
 # load tokenizer
-tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
-    PRE_TRAINED_MODEL_NAME,
-    # TODO: adding a vocab file to the tokenizer
-    # vocab_file=os.path.join(MODEL_PATH, "vocab.json"),
-)
-tokenizer.add_special_tokens(SpecialTokens.to_dict())
 
 
-def create_tokenized_dataset() -> DatasetDict:
-    """Create a tokenized dataset from the raw text data"""
+def get_language_model(
+    base_model: StrPath = PRE_TRAINED_MODEL_NAME,
+    *args,
+    config: GPT2Config | None = None,
+    verbose: bool = False,
+    **kwargs,
+) -> GPT2LMHeadModel:
 
-    def batch_encode(batch: Batch) -> BatchEncoding:
-        return tokenizer(batch["text"], truncation=True)  # type: ignore
-
-    text = get_raw_text_data()
-    lines = text.split("\n\n###\n\n")
-    assert all(len(line) > 0 for line in lines)
-    df = (
-        pd.Series(lines, name="text")
-        .where(lambda s: s != "")
-        .dropna()
-        .reset_index(drop=True)
-        .to_frame()
+    model = GPT2LMHeadModel.from_pretrained(
+        base_model,
+        *args,
+        **kwargs,
+        config=config,
     )
-
-    # create labels for classification
-    # TODO: add labels to the dataset
-    # df["labels"] = np.where(df.text.str.startswith("TAF"), 1, 0)
-    # TODO: pad tokens into the dataset
-    # df["text"] = SpecialTokens.bos_token + df.text.str.replace("\n", SpecialTokens.sep_token) + SpecialTokens.eos_token
-    # split data into train and test
-    train_df, test_df = train_test_split(df, test_size=0.2)
-    # create a DatasetDict
-    ds = DatasetDict(
-        train=Dataset.from_pandas(train_df, preserve_index=False),
-        test=Dataset.from_pandas(test_df, preserve_index=False),
-    )
-    # tokenize dataset with batch encoding using the tokenizer
-    ds = ds.map(batch_encode, batched=True, batch_size=BATCH_SIZE)
-    ds.save_to_disk(DATASET_PATH)  # type: ignore
-    return ds
+    # should always be in eval mode
+    assert isinstance(model, GPT2LMHeadModel)
+    if verbose:
+        print(model.config)
+    return model.cuda(device)
 
 
-def fine_tune_model() -> None:
+def fine_tune_model(tokenizer: GPT2Tokenizer) -> None:
     torch.cuda.empty_cache()
-    # base model
-    configuration = GPT2Config(
-        activation_function="gelu_new",
-        layer_norm_eps=1e-05,
-    )
-    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(
-        PRE_TRAINED_MODEL_NAME,
-        config=configuration,
-    ).cuda(  # type: ignore
-        device
+    model = get_language_model(
+        # GPT2Config -> https://huggingface.co/transformers/v3.5.1/model_doc/gpt2.html#gpt2config
+        config=GPT2Config(
+            activation_function="gelu_new",
+            layer_norm_eps=1e-05,
+        )
     )
     # resize the embedding layer to match the new vocabulary size
     model.resize_token_embeddings(len(tokenizer))
-    # tokenized dataset
+
+    # if dataset does not exist, create it
     if not DATASET_PATH.exists():
-        # if dataset does not exist, create it
+        print("***** Dataset not found, creating dataset... *****")
         (
-            JSONLines.load(
-                JSON_LINES_FILE,
-                strip_temps=True,
-                drop_wnd_aft_rmks=True,
-            )
-            .to_dataset_dict()
+            get_dataset_dict(JSON_LINES_FILE)
             .map(
                 lambda x: tokenizer(x["prompt"], truncation=True, padding=True),
-                batched=True,
                 batch_size=BATCH_SIZE,
+                batched=True,
             )
             .map(
                 lambda x: tokenizer(x["completion"], truncation=True, padding=True),
-                batched=True,
                 batch_size=BATCH_SIZE,
+                batched=True,
             )
             .save_to_disk(DATASET_PATH)  # type: ignore
         )
-    # ###  Trainer Setup ###
+    print("***** Loading dataset... *****")
     tokenized_ds = DatasetDict.load_from_disk(DATASET_PATH)  # type: ignore
+    # ###  Trainer Setup ###
     # configure the trainer arguments
     training_arguments = TrainingArguments(
         run_name=MODEL_NAME,
@@ -200,6 +138,7 @@ def fine_tune_model() -> None:
         overwrite_output_dir=True,
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
+        # begin_suppress_tokens =tokenizer.all_special_ids,
         #
         num_train_epochs=1,
         warmup_steps=500,
@@ -217,44 +156,42 @@ def fine_tune_model() -> None:
     )
     # configure the data collator
     data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
+        tokenizer,
         mlm=False,
-        mlm_probability=0.15,
+        # mlm_probability=0.15,
+        pad_to_multiple_of=20,
         return_tensors=FRAMEWORK,
-        pad_to_multiple_of=3,
     )
+    model.train()
     # create trainer
     trainer = Trainer(
-        model=model.train(),
-        tokenizer=tokenizer,
-        train_dataset=tokenized_ds["train"],  # type: ignore
-        eval_dataset=tokenized_ds["validation"],  # type: ignore
+        model=model,
         args=training_arguments,
         data_collator=data_collator,
-        # compute_metrics=lambda p: {"loss": p["loss"]},
+        train_dataset=tokenized_ds["train"],  # type: ignore
+        eval_dataset=tokenized_ds["test"],  # type: ignore
+        tokenizer=tokenizer,
+        model_init=None,  # type:ignore () -> PreTrainedModel = None,
+        compute_metrics=None,  # type:ignore ((EvalPrediction) -> Dict[Unknown, Unknown]) | None = None,
+        callbacks=None,  # type:ignore List[TrainerCallback] | None = None,
+        optimizers=(
+            None,
+            None,
+        ),  # type:ignore Tuple[Optimizer, LambdaLR] = (None, None),
+        preprocess_logits_for_metrics=None,  # type:ignore (Tensor, Tensor) -> Tensor = None
     )
-    # train model
+    # train the model
     trainer.train()
     # save model
     model.save_pretrained(MODEL_PATH)  # type: ignore
 
 
-if not MODEL_PATH.exists():
-    # if a new model is being trained fine tune the model
-    fine_tune_model()
-# load the model from the saved path
-model = GPT2LMHeadModel.from_pretrained(MODEL_PATH).cuda(device)  # type: ignore
-
-pipeline = CodePredictionPipeline(
-    model=model,
-    tokenizer=tokenizer,
-    device=device,
-    top_k=TOP_K,
-    top_p=TOP_P,
-    repetition_penalty=REPETITION_PENALTY,
-    temperature=TEMPERATURE,
-    max_length=MAX_LENGTH,
-)
+def handle_prediction(result) -> Iterable[list[str]]:
+    for item in result:
+        if isinstance(item, list):
+            yield from handle_prediction(item)
+        else:
+            yield re.split(r"(?=BECMG|TEMPO)", item["generated_text"])
 
 
 def main(text: str) -> None:
@@ -267,71 +204,135 @@ def main(text: str) -> None:
 
     >>> python -m model.gpt2 --text "TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\\nTEMPO 0200/0206 5000"
     [[{'generated_text': 'TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\\nTEMPO 0200/0206 5000 BR BKN015\\nBECMG 0314 VRG18650 510004 510013 650726 521044 510353 SN SCT024 620303 530154 540403 FEW017 VCSH 0512Z 54 01006W 4800 RA SKC WS009CB 56012QLD035 520204 FG 9000 DVRS 621958 610002 623504 3'}]]
-
-
     """
-
-    print(pipeline.predict(text.split("\n")))
-
-
-def test_tokenizer(file_in="store/training-data-v2.jsonl") -> None:
-    ds = JSONLines.load(file_in).to_dataset_dict()
-
-    ds = ds.map(
-        lambda x: tokenizer(x["prompt"], truncation=True, padding=True),
-        batched=True,
-        batch_size=BATCH_SIZE,
-    ).map(
-        lambda x: tokenizer(x["completion"], truncation=True, padding=True),
-        batched=True,
-        batch_size=BATCH_SIZE,
+    tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
+        PRE_TRAINED_MODEL_NAME,
+        num_labels=2,
+        do_basic_tokenize=False,
     )
 
+    tokenizer.add_tokens(ADDITIONAL_TOKENS)  # type: ignore
+    tokenizer.add_special_tokens(ADDITIONAL_SPECIAL_TOKENS)  # type: ignore
+    if not MODEL_PATH.exists():
+        # if a new model is being trained fine tune the model
+        fine_tune_model(tokenizer)
+    # load the model from the saved path
+    model = get_language_model(MODEL_PATH)
+    model.resize_token_embeddings(len(tokenizer))
 
-def generate_json_lines(
-    file_in="store/training-data-v2.txt", file_out="store/training-data-v2.jsonl"
-):
-    # NOTE: this is a slow function but should only be run once
-    # when the dataset is first created.
-    import json
-    from .dataset import TAFDataset
+    encoding = tokenizer(
+        text,
+        return_tensors=FRAMEWORK,
+        truncation=True,
+    ).to(device)
+    # model.pad_token_id = tokenizer.eos_token_id
+    outputs = model.generate(encoding.input_ids, do_sample=False, max_length=MAX_LENGTH)
+    print("***** batch_decode -> ... *****")
+    for res in (
+        "\n ".join(re.split(r"(?=BECMG|TEMPO)", item))
+        for item in tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    ):
+        print(res)
+    # print(prediction)
+    pipe = CodePredictionPipeline(
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        top_k=TOP_K,
+        top_p=TOP_P,
+        repetition_penalty=REPETITION_PENALTY,
+        temperature=TEMPERATURE,
+        max_length=MAX_LENGTH,
+        num_return_sequences=3,
+    )
+    print("***** pipe.forecast -> ... *****")
+    for prediction in handle_prediction(pipe.forecast(text)):
+        print("\n ".join(prediction))
+        print()
+    print("***** pipe.__call__ -> ... *****")
+    for prediction in handle_prediction(pipe(text)):
+        print("\n ".join(prediction))
+        print()
+    # print(list(handle_prediction(prediction)))
+    # print(pipe(
+    # text,
+    #     # temperature=.9,
+    #     # return_full_text=True, #  If set to False only added text is returned, otherwise the full text is returned Only meaningful if return_text is set to True.
+    #     # # num_return_sequences=3,
+    #     # early_stopping=False,
+    #     # clean_up_tokenization_spaces = False,
+    #     # handle_long_generation = "hole",
+    #     # handle_
+    #     ))
+    # print(tokenizer.get_vocab().keys())
+    # with open("t.txt", "w") as f:
+    #     for key in tokenizer.get_vocab().keys():
+    #         f.write(key + "\n\n")
+    #     # f.write(tokenizer.get_vocab().keys())
+    # print(prediction)
 
-    with open(file_in, "r") as f:
-        taf = TAFDataset(f.read().split("\n\n###\n\n"))
 
-    # two variations of the same dataset are loaded
-    taf_list = [
-        # the first dataset split every new line in the taf which is then split again into
-        # a prompt and a completion
-        taf.to_json_lines(split_each_line=True).to_frame()
-        for _ in range(1_000)
-    ] + [
-        # the second dataset splits each TAF into a prompt and a completion
-        # there is a much lower chance of the model seeing the same prompt-completion pair
-        # so the range is much higher to create a larger dataset
-        taf.to_json_lines(split_each_line=False).to_frame()
-        for _ in range(5_000)
-    ]
-    # combine the two datasets and drop duplicates
-    df = pd.concat(taf_list).drop_duplicates().reset_index()
-    # remove and whitespace from the prompt and completion
-    df = df.drop(df.index[df.completion == ""])
-    time_cols = ["issue_time", "from_valid_time", "to_valid_time"]
-    # format the time columns
-    df[time_cols] = df[time_cols].stack().dt.strftime("%Y-%m-%dT%H:%M:%SZ").unstack()
+def test_tokenizer(
+    text: str, additional_special_tokens: list[AddedToken] = ADDITIONAL_SPECIAL_TOKENS
+) -> None:
+    """
+    test the tokenizer
+    """
+    tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
+        PRE_TRAINED_MODEL_NAME,
+        num_labels=2,
+        # TODO: adding a vocab file to the tokenizer
+        # vocab_files={"vocab_file": "vocab.txt"},
+        # vocab_file=os.path.join(MODEL_PATH, "vocab.json"),
+    )
+    special_tokens = SpecialTokens.to_dict()
+    special_tokens["additional_special_tokens"] = additional_special_tokens  # type: ignore
+    tokenizer.add_special_tokens(special_tokens)
+    print(tokenizer.tokenize(text, truncation=True, padding=True))
+    tokens = (
+        "TAF",
+        "\nBECMG",
+        "BECMG",
+        "\nTEMPO",
+        "TEMPO",
+        "VRB",
+        "VRB06KT",
+        "18010G15KT" "BKN030",
+        "BKN030 ",
+    )
 
-    with open(file_out, "w") as f:
-        for record in df.to_dict(orient="records"):
-            json.dump(record, f)
-            f.write("\n")
+    for token in tokens:
+        print(token, tokenizer.tokenize(token), sep="=")
+    with open("store/training-data-v2.txt", "r") as f:
+        lines = f.read().split("\n\n###\n\n")
+        # print(lines)
+        for line in lines:
+            lines = line.strip()
+            print(line)
+            print(tokenizer.tokenize(line))
 
+
+PARSER_ENGINE = {
+    "main": main,
+    "tokenizer": test_tokenizer,
+}
 
 if __name__ == "__main__":
+
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("function", default="main")
+    # add a positional argument for the function to run
+
     parser.add_argument(
         "--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT"
     )
     args = parser.parse_args()
-    main(args.text)
+    match args.function:
+        case "main":
+            main(args.text)
+        case "tokenizer":
+            test_tokenizer(args.text)
+    # PARSER_ENGINE[args.function](args.text)
+    # main(args.text)

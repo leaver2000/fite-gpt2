@@ -1,32 +1,18 @@
 import os
 import re
-import functools
 from enum import Enum
 from pathlib import Path
-from typing import Literal, Callable, ParamSpec
-import dataclasses
+from typing import ParamSpec
 
 import pandas as pd
 import torch
 
 #
-from transformers import (
-    GPT2LMHeadModel,
-    GPT2Tokenizer,
-    TextGenerationPipeline,
-    AddedToken,
-    BatchEncoding,
-)
-from datasets.dataset_dict import DatasetDict
-from datasets.arrow_dataset import Dataset, Batch
+
+from transformers import AddedToken
 
 __all__ = [
-    "get_dataset_path",
-    "get_model_path",
-    "get_raw_text_data",
-    "get_prepared_data",
     "get_device",
-    "create_tokenized_dataset",
     "PipeLineTask",
     "SpecialTokens",
     "RegexPatterns",
@@ -34,14 +20,12 @@ __all__ = [
     # Path constants
     "DATASET_PATH",
     "MODEL_PATH",
-    "RAW_TEXT",
-    "JSON_LINES_FILE",
+    "RAW_TEXT_FILE",
 ]
 STORE = Path.cwd() / "store"
 DATASET_PATH = STORE / "datasets"
 MODEL_PATH = STORE / "models"
-RAW_TEXT = STORE / "training-data-v2.txt"
-JSON_LINES_FILE = STORE / "training-data-v2.jsonl"
+RAW_TEXT_FILE = STORE / "training-data-v2.txt"
 
 TOKEN_PATTERN = re.compile(
     r"(?<=\s\d{3})(?=\d{2,3})|(?=KT)|(?=G\d{2}KT)|(?=G\d{3}KT)|(?<=FEW|SCT|BKN|OVC)|(?<=(FEW|SCT|BKN|OVC)\d{3})(?=CB)"
@@ -70,72 +54,22 @@ class RegexPatterns:
 P = ParamSpec("P")
 ModelPath = Path
 DatasetPath = Path
+JSONLinesFile = Path
 
 
 def path_is_empty(path: Path) -> bool:
     return path.exists() and not os.listdir(path)
 
 
-def clear_path(func: Callable[P, Path]) -> Callable[P, Path]:
-    """Decorator to clear the path before returning"""
-
-    @functools.wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Path:
-        path = func(*args, **kwargs)
+def unpack_paths(version: str) -> tuple[ModelPath, DatasetPath, JSONLinesFile]:
+    """Unpacks the paths for the model and dataset"""
+    paths = (MODEL_PATH / version, DATASET_PATH / version)
+    for path in paths:
         if path.exists() and path_is_empty(path):
             # remove the path if it exists and is empty
             path.rmdir()
-        return path
-
-    return wrapper
-
-
-@clear_path
-def get_dataset_path(dataset_prep_method: str, version: str) -> DatasetPath:
-    return DATASET_PATH / f"{dataset_prep_method}-v{version}"
-
-
-@clear_path
-def get_model_path(model_name: str, version: str) -> ModelPath:
-    return MODEL_PATH / f"{model_name}-v{version}"
-
-
-def unpack_paths(model_name: str, version: str) -> tuple[ModelPath, DatasetPath]:
-    """Unpacks the paths for the model and dataset"""
-    model_path = get_model_path(model_name, version)
-    dataset_path = get_dataset_path(model_name, version)
-    return model_path, dataset_path
-
-
-def get_raw_text_data() -> str:
-    with RAW_TEXT.open("r") as f:
-        return f.read().strip()
-
-
-DSPrepMethod = Literal["taf-full", "taf-line", "taf-component"]
-
-
-def get_prepared_data(method: DSPrepMethod) -> pd.DataFrame:
-    text_data = get_raw_text_data()
-
-    if method == "taf-full":
-        # each TAF is split as a new line
-        text_data = text_data.split("\n\n###\n\n")
-    elif method == "taf-line":
-        # each line of every TAF is split as a new line
-        text_data = text_data.replace("###", "").splitlines()
-    elif method == "taf-component":
-        # splitting individual text components for tokenization
-        # ie: 12015G20KT 9999 BKN030CB -> 120 15 G 20 KT 9999 BKN 030 CB
-        text_data = TOKEN_PATTERN.sub(" ", text_data).splitlines()
-    else:
-        raise ValueError("method must be either 'element' or 'line'")
-
-    text_data = [line.strip() for line in text_data if line]
-    labels = [0 if line.startswith("TAF") else 1 for line in text_data]
-    df = pd.DataFrame({"text": text_data, "labels": labels})
-
-    return df.loc[df.text != "", :]
+    json_lines = STORE / f"training-data-{version}.jsonl"
+    return *paths, json_lines
 
 
 def get_device(verbose: bool = True, index=0) -> torch.device:
@@ -193,36 +127,10 @@ def train_test_split(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     # split the training data as a fraction of test_size
     train = df.sample(frac=1 - test_size, random_state=0)
-    # drop the training data from the original dataframe to create the test data
+    # drop the training data from the original DataFrames to create the test data
     test = df.drop(train.index)
-    # return the train and test dataframes
+    # return the train and test DataFrames
     return train, test
-
-
-def create_tokenized_dataset(prep_method: DSPrepMethod, batch_size: int) -> None:
-    # load data from the raw text file
-    df = get_prepared_data(prep_method)
-
-    # split into train and test
-    train_df, test_df = train_test_split(df, test_size=0.2)
-    # create a DatasetDict
-    ds = DatasetDict(
-        {
-            "train": Dataset.from_pandas(train_df, preserve_index=False),
-            "test": Dataset.from_pandas(test_df, preserve_index=False),
-        }
-    )
-    # batch encoder for tokenization
-    def batch_encode(batch: Batch) -> BatchEncoding:
-        return tokenizer(batch["text"], truncation=True)  # type: ignore
-
-    # tokenize dataset with batch encoding using the tokenizer
-    ds = ds.map(
-        batch_encode,
-        batched=True,
-        batch_size=batch_size,
-    )
-    ds.save_to_disk(DATASET_PATH)  # type: ignore
 
 
 AddedTokenType = str | AddedToken
@@ -235,11 +143,11 @@ class TokenEnum(str, Enum):
         return str(self.value)
 
     @classmethod
-    def to_dict(cls) -> dict[str, AddedTokenType]:
+    def to_dict(cls) -> dict[str, AddedToken]:
         return {k: v.value for k, v in cls._member_map_.items()}
 
     @classmethod
-    def include(cls, *tokens: AddedToken) -> dict[str, AddedTokenType]:
+    def include(cls, *tokens: AddedToken) -> dict[str, AddedToken]:
         """
         Represents a token that can be be added to a ~tokenizers.Tokenizer. It can have special options that defines the way it should behave.
 
@@ -265,57 +173,36 @@ class TokenEnum(str, Enum):
 
 
 class SpecialTokens(TokenEnum):
-    bos_token = AddedToken("<|bos|>")
-    """A special token representing the beginning of a sentence. Will be associated to `self.bos_token` and added to `self.special_tokens_map`."""
+    """Special tokens that can be added to a tokenizer
+
+    cls_token: The classification token which is used when doing sequence classification (classification of the whole sequence instead of per-token classification). It is the first token of the sequence when added to sequences.
+    sep_token: The separator token, which is used when building a sequence from multiple sequences, e.g. two sequences for sequence classification or for a text and a question for question answering. It is also used as the last token of a sequence built with special tokens.
+    pad_token: The token used for padding, for example when batching sequences of different lengths.
+    mask_token: The token used for masking values. This is the token used when training this model with masked language modeling. This is the token which the model will try to predict.
+    unk_token: The unknown token. A token that is not in the vocabulary cannot be converted to an ID and is set to be this token instead.
+    bos_token: The beginning of sentence token.
+    eos_token: The end of sentence token.
+    additional_special_tokens: Additional special tokens used by the tokenizer.
+    """
+
+    cls_token = AddedToken("<|TAF|>")
+    """
+    A special token representing the beginning of a sentence. 
+    Will be associated to `self.bos_token` and added to `self.special_tokens_map`."""
     pad_token = AddedToken("<|pad|>")
-    """A special token representing a padding token. Will be associated to `self.pad_token` and added to `self.special_tokens_map`."""
+    """
+    A special token representing a padding token. 
+    Will be associated to `self.pad_token` and added to `self.special_tokens_map`."""
+    bos_token = AddedToken("<|bos|>")
+    """
+    A special token representing the beginning of a sentence.
+    Will be associated to `self.bos_token` and added to `self.special_tokens_map`."""
     eos_token = AddedToken("<|eos|>")
-    """A special token representing the end of a sentence. Will be associated to `self.eos_token` and added to `self.special_tokens_map`."""
+    """
+    A special token representing the end of a sentence. 
+    Will be associated to `self.eos_token` and added to `self.special_tokens_map`."""
     sep_token = AddedToken("<|sep|>")
-    """A special token representing the end of a sentence. Will be associated to `self.eos_token` and"""
-
-
-@dataclasses.dataclass
-class CodePredictionPipeline:
-    model: GPT2LMHeadModel
-    tokenizer: GPT2Tokenizer
-    device: torch.device
-    repetition_penalty: float
-    temperature: float
-    top_k: int
-    top_p: float
-    max_length: int
-    pad_token_id: int | None = None
-    eos_token_id: int | None = None
-    bos_token_id: int | None = None
-    decoder_start_token_id: int | None = None
-    do_sample: bool = True
-    num_return_sequences: int = 1
-    no_repeat_ngram_size: int = 3
-    early_stopping: bool = True
-    num_beams: int = 1
-    length_penalty: float = 1.0
-
-    use_cache: bool = True
-    num_beam_groups: int = 1
-    diversity_penalty: float = 0.0
-    clean_up_tokenization_spaces: bool = True
-
-    def __post_init__(self):
-        if self.tokenizer:
-            self.pad_token_id = self.tokenizer.pad_token_id
-            self.eos_token_id = self.tokenizer.eos_token_id
-            self.bos_token_id = self.tokenizer.bos_token_id
-            self.decoder_start_token_id = self.tokenizer.bos_token_id
-
-        self.__pipeline = TextGenerationPipeline(**dataclasses.asdict(self))
-
-    def predict(
-        self, text: str | list[str], **kwargs
-    ) -> list[dict[str, str] | list[dict[str, str]]]:
-        result = self.__pipeline(text, **kwargs)
-        return result  # type: ignore
-        # if verbose:
-        #     print(result)
-        # response, *_ = re.split(r"(?<=QNH\d{4}INS)", result["generated_text"]) # type: ignore
-        # return response
+    """
+    A special token representing the end of a sentence. 
+    Will be associated to `self.eos_token` and added to `self.special_tokens_map`."""
+    unk_token = AddedToken("<|unk|>")
