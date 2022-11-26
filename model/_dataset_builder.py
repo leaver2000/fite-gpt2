@@ -7,7 +7,7 @@ import datasets
 from datasets.dataset_dict import DatasetDict
 from datasets.arrow_dataset import Dataset
 
-from .util import SpecialTokens, RAW_TEXT_FILE
+from .util import SpecialTokens
 
 
 __all__ = ["get_dataset_dict"]
@@ -35,11 +35,14 @@ class Datum(TypedDict):
     completion: str
 
 
-def make_json_lines(json_lines_file: StrPath) -> None:
+def make_json_lines(text_file: StrPath, json_lines_file: StrPath) -> None:
     if isinstance(json_lines_file, str):
         json_lines_file = Path(json_lines_file)
 
-    with RAW_TEXT_FILE.open("r") as f:
+    if isinstance(text_file, str):
+        text_file = Path(text_file)
+
+    with text_file.open("r") as f:
         taf_series = pd.Series(f.read().split("\n\n###\n\n"), name="text").str.strip()
 
     taf_series = (
@@ -104,7 +107,10 @@ def make_json_lines(json_lines_file: StrPath) -> None:
 
 
 def get_dataset_dict(
-    json_lines_file: StrPath, test_size: float = 0.2, random_state: int = 42
+    text_file: StrPath,
+    json_lines_file: StrPath,
+    test_size: float = 0.2,
+    random_state: int = 42,
 ) -> DatasetDict:
     """Generate a jsonl file from a text file."""
 
@@ -112,7 +118,7 @@ def get_dataset_dict(
         json_lines_file = Path(json_lines_file)
 
     if not json_lines_file.exists():
-        make_json_lines(json_lines_file)
+        make_json_lines(text_file, json_lines_file)
 
     df = pd.read_json(json_lines_file, lines=True)
     train = df.sample(frac=1 - test_size, random_state=random_state)
