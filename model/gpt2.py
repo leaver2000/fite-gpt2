@@ -1,184 +1,121 @@
-# standard library imports
 """
-# gpt2-taf
-
-## Description
-
-This is a project to train the GPT-2 model for TAF autocompletion.
-provided with a partial TAF, the model will attempt to generate the rest of the TAF.
-
-GPT-2 uses multi-layer transformers to generate text.
-
-## Drawbacks
-
-GPT-2 are that is is uni-directional and can only complete left to right.
-with a TAF this presents some challenges as the max and min temperature group come at
-the end of the forecast.  The model may be able to better resolve present weather
-predictions if the max and min temperature are provided first.
 
 
-## TODO:
-- [ ] increase the size of the training dataset
-- [ ] add labels to the dataset
-- [ ] pad tokens into the dataset
-- [ ] add a classification head to the model
-- [ ] add a regression head to the model
-- [ ] add a sequence classification head to the model
-- [ ] add a token classification head to the model
 
-
-references:
-https://medium.com/@gauravghati/comparison-between-bert-gpt-2-and-elmo-9ad140cd1cda
-https://huggingface.co/transformers/model_doc/gpt2.html
-
-
-``` bash
-python -m torch.utils.collect_env
-
-Collecting environment information...
-PyTorch version: 1.13.0+cu117
-Is debug build: False
-CUDA used to build PyTorch: 11.7
-ROCM used to build PyTorch: N/A
-
-OS: Ubuntu 22.04.1 LTS (x86_64)
-GCC version: (Ubuntu 11.2.0-19ubuntu1) 11.2.0
-Clang version: Could not collect
-CMake version: version 3.22.1
-Libc version: glibc-2.35
-
-Python version: 3.10.6 (main, Nov  2 2022, 18:53:38) [GCC 11.3.0] (64-bit runtime)
-Python platform: Linux-5.10.102.1-microsoft-standard-WSL2-x86_64-with-glibc2.35
-Is CUDA available: True
-CUDA runtime version: 11.5.119
-CUDA_MODULE_LOADING set to: LAZY
-GPU models and configuration: GPU 0: NVIDIA GeForce RTX 2080 SUPER
-Nvidia driver version: 516.59
-cuDNN version: Probably one of the following:
-/usr/lib/x86_64-linux-gnu/libcudnn.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_adv_infer.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_adv_train.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_cnn_infer.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_cnn_train.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_ops_infer.so.8.2.4
-/usr/lib/x86_64-linux-gnu/libcudnn_ops_train.so.8.2.4
-HIP runtime version: N/A
-MIOpen runtime version: N/A
-Is XNNPACK available: True
-
-Versions of relevant libraries:
-[pip3] mypy-extensions==0.4.3
-[pip3] numpy==1.23.5
-[pip3] torch==1.13.0+cu117
-[conda] Could not collect
-```
-
-A specific version of pytorch was required for my build of the model
-
-``` bash
-pip install torch==1.13.0+cu117 -f https://download.pytorch.org/whl/torch_stable.html
-```
 """
-import os
+import re
+import json
+from typing import Iterable, NamedTuple
+from pathlib import Path
 
-# keep tensorflow quiet
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-# general imports
+
 import torch
-import pandas as pd
-
-# transformer imports
 from transformers import (
     GPT2Config,
     GPT2Tokenizer,
     GPT2LMHeadModel,
 )
-from transformers import Trainer, TrainingArguments
-from transformers import BatchEncoding, DataCollatorForLanguageModeling
-from transformers import TextGenerationPipeline
+from transformers import DataCollatorForLanguageModeling
+from transformers import Trainer, TrainingArguments, AddedToken
 
-# datasets imports
 from datasets.dataset_dict import DatasetDict
-from datasets.arrow_dataset import Dataset, Batch
+
+from ._dataset_builder import get_dataset_dict
+from ._pipeline import CodePredictionPipeline, HyperParameterStrategy, HyperParameters
 
 from .util import (
-    SpecialTokens,
     unpack_paths,
-    get_raw_text_data,
-    train_test_split,
+    SpecialTokens,
 )
 
-# RUNTIME VARIABLES
-VERSION = "0.0.2"
+
+# DONT CHANGE
+FRAMEWORK = "pt"
 PRE_TRAINED_MODEL_NAME = "gpt2"
-DATASET_PREP_METHOD = "taf-full"
-PYTORCH_FRAMEWORK = "pt"
-MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-{DATASET_PREP_METHOD}"
-MODEL_PATH, DATASET_PATH = unpack_paths(MODEL_NAME, VERSION)
+# VERSIONING
+DATASET_NAME = "taf"
+MODEL_VERSION = 1
+VERSION = f"{MODEL_VERSION}.0"
+MODEL_PATH, DATASET_PATH, RAW_TEXT, JSON_LINES_FILE = unpack_paths(
+    DATASET_NAME, VERSION
+)
+MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-{DATASET_NAME}-{VERSION}"
+
+# RUNTIME VARIABLES
+MAX_LENGTH = 256
 BATCH_SIZE = 8
-MAX_LENGTH = 120
+
+# TYPES
+StrPath = str | Path
+
+ADDITIONAL_TOKENS = ("\u0120TAF", "\u0120BECMG", "\u0120TEMPO")
+# TOKENS to be ignored by the tokenizer
+ADDITIONAL_SPECIAL_TOKENS = SpecialTokens.include(
+    AddedToken("LAST", single_word=True, lstrip=True, rstrip=True),
+    AddedToken("NO", single_word=True, lstrip=True, rstrip=True),
+    AddedToken("AMDS", single_word=True, lstrip=True, rstrip=True),
+    AddedToken("RMK", single_word=True, lstrip=True, rstrip=True),
+)
+
+
 # define the device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
-# load tokenizer
-tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(PRE_TRAINED_MODEL_NAME)
-tokenizer.add_special_tokens(SpecialTokens.to_dict())
 
 
-def create_tokenized_dataset() -> None:
-    """Create a tokenized dataset from the raw text data"""
+def get_language_model(
+    base_model: StrPath = PRE_TRAINED_MODEL_NAME,
+    *args,
+    config: GPT2Config | None = None,
+    verbose: bool = False,
+    **kwargs,
+) -> GPT2LMHeadModel:
 
-    def batch_encode(batch: Batch) -> BatchEncoding:
-        return tokenizer(batch["text"], truncation=True)  # type: ignore
-
-    text = get_raw_text_data()
-    lines = text.split("\n\n###\n\n")
-    assert all(len(line) > 0 for line in lines)
-    df = (
-        pd.Series(lines, name="text")
-        .where(lambda s: s != "")
-        .dropna()
-        .reset_index(drop=True)
-        .to_frame()
+    model = GPT2LMHeadModel.from_pretrained(
+        base_model,
+        *args,
+        config=config,
+        **kwargs,
     )
-    # create labels for classification
-    # TODO: add labels to the dataset
-    # df["labels"] = np.where(df.text.str.startswith("TAF"), 1, 0)
-    # TODO: pad tokens into the dataset
-    # df["text"] = SpecialTokens.bos_token + df.text.str.replace("\n", SpecialTokens.sep_token) + SpecialTokens.eos_token
-    # split data into train and test
-    train_df, test_df = train_test_split(df, test_size=0.2)
-    # create a DatasetDict
-    ds = DatasetDict(
-        train=Dataset.from_pandas(train_df, preserve_index=False),
-        test=Dataset.from_pandas(test_df, preserve_index=False),
-    )
-    # tokenize dataset with batch encoding using the tokenizer
-    ds = ds.map(batch_encode, batched=True, batch_size=BATCH_SIZE)
-    ds.save_to_disk(DATASET_PATH)  # type: ignore
+    # should always be in eval mode
+    assert isinstance(model, GPT2LMHeadModel)
+    if verbose:
+        print(model.config)
+    return model.cuda(device)
 
 
-def fine_tune_model() -> None:
-    """Fine tune the model on the tokenized dataset"""
+def fine_tune_model(tokenizer: GPT2Tokenizer) -> None:
     torch.cuda.empty_cache()
-    # gpt2 config
-    configuration = GPT2Config(
-        activation_function="gelu_new",
-        layer_norm_eps=1e-05,
-    )
-    # load base model
-    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(
+    model = get_language_model(
         PRE_TRAINED_MODEL_NAME,
-        config=configuration,
-    ).cuda(  # type: ignore
-        device
+        # GPT2Config -> https://huggingface.co/transformers/v3.5.1/model_doc/gpt2.html#gpt2config
+        config=GPT2Config(
+            activation_function="gelu_new",
+            layer_norm_eps=1e-05,
+        ),
     )
     # resize the embedding layer to match the new vocabulary size
     model.resize_token_embeddings(len(tokenizer))
+
+    # if dataset does not exist, create it
     if not DATASET_PATH.exists():
-        # if dataset does not exist, create it
-        create_tokenized_dataset()
-    # load the dataset
+        print("***** Dataset not found, creating dataset... *****")
+        (
+            get_dataset_dict(RAW_TEXT, JSON_LINES_FILE)
+            .map(
+                lambda x: tokenizer(x["prompt"], truncation=True, padding=True),
+                batch_size=BATCH_SIZE,
+                batched=True,
+            )
+            .map(
+                lambda x: tokenizer(x["completion"], truncation=True, padding=True),
+                batch_size=BATCH_SIZE,
+                batched=True,
+            )
+            .save_to_disk(DATASET_PATH)  # type: ignore
+        )
+    print("***** Loading dataset... *****")
     tokenized_ds = DatasetDict.load_from_disk(DATASET_PATH)  # type: ignore
+    # ###  Trainer Setup ###
     # configure the trainer arguments
     training_arguments = TrainingArguments(
         run_name=MODEL_NAME,
@@ -186,6 +123,7 @@ def fine_tune_model() -> None:
         overwrite_output_dir=True,
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
+        # begin_suppress_tokens =tokenizer.all_special_ids,
         #
         num_train_epochs=1,
         warmup_steps=500,
@@ -203,55 +141,211 @@ def fine_tune_model() -> None:
     )
     # configure the data collator
     data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
+        tokenizer,
         mlm=False,
-        mlm_probability=0.15,
-        return_tensors=PYTORCH_FRAMEWORK,
-        pad_to_multiple_of=3,
+        # mlm_probability=0.15,
+        pad_to_multiple_of=20,
+        return_tensors=FRAMEWORK,
     )
+    model.train()
     # create trainer
     trainer = Trainer(
-        model=model.train(),
-        train_dataset=tokenized_ds["train"],  # type: ignore
-        eval_dataset=tokenized_ds["test"],  # type: ignore
+        model=model,
         args=training_arguments,
         data_collator=data_collator,
-        # compute_metrics=lambda p: {"loss": p["loss"]},
+        train_dataset=tokenized_ds["train"],  # type: ignore
+        eval_dataset=tokenized_ds["test"],  # type: ignore
+        tokenizer=tokenizer,
+        compute_metrics=None,  # type:ignore ((EvalPrediction) -> Dict[Unknown, Unknown]) | None = None,
+        model_init=None,  # type:ignore () -> PreTrainedModel = None,
+        callbacks=None,  # type:ignore List[TrainerCallback] | None = None,
+        optimizers=(
+            None,
+            None,
+        ),  # type:ignore Tuple[Optimizer, LambdaLR] = (None, None),
+        preprocess_logits_for_metrics=None,  # type:ignore (Tensor, Tensor) -> Tensor = None
     )
-    # train model
+    # train the model
     trainer.train()
     # save model
     model.save_pretrained(MODEL_PATH)  # type: ignore
 
 
-def main(text: str) -> None:
-    if not MODEL_PATH.exists():
-        # if a new model is being trained fine tune the model
-        fine_tune_model()
-    # load the model from the saved path
-    model = GPT2LMHeadModel.from_pretrained(MODEL_PATH).cuda(device)  # type: ignore
+def handle_prediction(
+    result: Iterable[dict[str, str]] | list[dict[str, str]]
+) -> Iterable[list[str]]:
+    for item in result:
+        if isinstance(item, list):
+            yield from handle_prediction(item)
+        else:
+            yield re.split(r"(?=BECMG|TEMPO)", item["generated_text"])
 
-    pipe = TextGenerationPipeline(
-        model=model,  # PreTrainedModel
-        tokenizer=tokenizer,  # PreTrainedTokenizer
-        device=device,  # torch.device
-        PYTORCH_FRAMEWORK=PYTORCH_FRAMEWORK,  # Literal["pt", "tf"]
-        temperature=0.2,  # strictly positive float
-        top_k=100,  # int
-        top_p=0.1,  # float
-        # repetition_penalty=2.0,  # float
-        # do_sample=True,  # bool
+
+class ResultOutput(NamedTuple):
+    """ResultOutput is a named tuple that contains the output of the model."""
+
+    model: str
+    prompt_text: str
+    generated_text: list[str]
+    score: float
+    strategy: str
+    hyper_parameters: HyperParameterStrategy | HyperParameters
+
+
+def run(text_input: str) -> list[ResultOutput]:
+    """
+    ### example:
+    provided the string below the model correctly encoded the temporary group
+    by including a visibility obstruction and a lower ceiling.
+    this is a very common use case when encoding TEMPO groups during showers
+
+    The third line in the taf has a-lot more randomness to it.
+    """
+    tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
+        PRE_TRAINED_MODEL_NAME,
+        num_labels=2,
+        do_basic_tokenize=False,
     )
 
-    print(pipe(text, max_length=MAX_LENGTH))
+    tokenizer.add_tokens(ADDITIONAL_TOKENS)  # type: ignore
+    tokenizer.add_special_tokens(ADDITIONAL_SPECIAL_TOKENS)  # type: ignore
+    if not MODEL_PATH.exists():
+        # if a new model is being trained fine tune the model
+        fine_tune_model(tokenizer)
+    # load the model from the saved path
+    model = get_language_model(MODEL_PATH)
+    model.resize_token_embeddings(len(tokenizer))
+
+    print("***** batch_decode -> ... *****")
+    pipe = CodePredictionPipeline(
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        max_length=MAX_LENGTH,
+        num_return_sequences=3,
+    )
+
+    def generate_forecast_output(*strategies: HyperParameterStrategy):
+        for strategy in strategies:
+            for forecast in pipe.generate_forecast(text_input, strategy=strategy):
+                yield ResultOutput(
+                    model=MODEL_NAME,
+                    prompt_text=text_input,
+                    generated_text=forecast,
+                    score=0.0,  # TODO: ...
+                    strategy=strategy.name,
+                    hyper_parameters=strategy,
+                )
+
+    return list(generate_forecast_output(*HyperParameterStrategy))
+
+
+def pipeline() -> CodePredictionPipeline:
+    tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
+        PRE_TRAINED_MODEL_NAME,
+        num_labels=2,
+        do_basic_tokenize=False,
+    )
+
+    tokenizer.add_tokens(ADDITIONAL_TOKENS)  # type: ignore
+    tokenizer.add_special_tokens(ADDITIONAL_SPECIAL_TOKENS)  # type: ignore
+    model = get_language_model(MODEL_PATH)
+    model.resize_token_embeddings(len(tokenizer))
+    return CodePredictionPipeline(
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        max_length=MAX_LENGTH,
+        num_return_sequences=3,
+    )
+
+
+def many(text_input: str):
+    text_promps = (
+        "TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\nTEMPO 0200/0206 5000",
+        "TAF KGTB 251700Z 2517/2623 26012G20KT",
+        (
+            "TAF KGTB 251700Z 2517/2623 26012G20KT 9999 OVC008 QNH2970INS\n"
+            "BECMG 2519/2520 27009KT 9999 SCT009 OVC015 QNH2976INS\n"
+            "BECMG 2610/2611 VRB06KT 9999 BKN015 OVC025 QNH2991INS"
+        ),
+        "TAF KMTC 252000Z 2520/2702 29012G20KT 9999 SKC",
+        "TAF PASY 251400Z 2514/2620 11006KT 9999 FEW030 FEW045 SCT100 QNH3002INS\nBECMG 2519/2520",
+        text_input,
+    )
+    results = []
+    for text_input in text_promps:
+        results.extend([result._asdict() for result in run(text_input)])
+
+    with open("results.json", "w") as f:
+        json.dump(results, f, indent=4)
+
+
+def validate():
+    with open("results.json") as f:
+        results = (ResultOutput(**result) for result in json.load(f))
+
+    for result in results:
+        score = 0.0
+        # looking at the most last line in the prompt text
+        prompt = result.prompt_text.split("\n")[-1]
+        if "TS" in prompt:
+            # only one line should start with that prompt
+            (last_prompt_line,) = (
+                line for line in result.generated_text if line.startswith(prompt)
+            )
+            # if the prompt has a TS in it then the generated text should have a CB remark
+            if "CB" in last_prompt_line:
+                score += 1
+            else:
+                score -= 1
+            # there should not be any lower case letters in the generated text
+            if all(line.isupper() for line in result.generated_text):
+                score += 1
+            else:
+                score -= 1
+        yield result._replace(score=score)
+
+
+def main(text_input: str) -> None:
+    run(text_input)
 
 
 if __name__ == "__main__":
+
     import argparse
 
     parser = argparse.ArgumentParser()
+    # positional argument for switch
+    parser.add_argument("function", default="main")
+    # function arguments
     parser.add_argument(
         "--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT"
     )
     args = parser.parse_args()
-    main(args.text)
+    match args.function:
+        case "main":
+            result = main(args.text)
+            print(result)
+        case "many":
+            many(args.text)
+        case "validate":
+            import pandas as pd
+
+            df = (
+                pd.DataFrame(validate())
+                .drop(columns=["hyper_parameters", "model"])
+                .set_index("strategy")
+            )
+            for name, prompt_text, generated_text, score in df.sort_values(
+                by=["score"], ascending=True
+            ).itertuples():
+                generated_text = "\n ".join(generated_text)
+                print(
+                    f"""
+{name=} {prompt_text=} {score=}
+{generated_text}"""
+                )
+
+        case _:
+            raise ValueError(f"Function {args.function} not found")
