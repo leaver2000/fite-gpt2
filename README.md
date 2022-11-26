@@ -2,6 +2,70 @@
 
 > ✨ Bootstrapped with Create Snowpack App (CSA).
 
+## train the model
+``` bash
+python -m model train
+***** Tokenizer not found, creating tokenizer... *****
+***** Model not found, creating model... *****
+***** Dataset not found, creating dataset... *****
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2433/2433 [00:05<00:00, 417.94ba/s]
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 609/609 [00:01<00:00, 450.50ba/s]
+100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2433/2433 [00:07<00:00, 340.06ba/s]
+100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 609/609 [00:01<00:00, 350.89ba/s]
+***** Loading dataset... *****
+```
+The model was trained on ~90-100 TAFs from each of the following locations:
+
+``` bash
+[
+    "KADW" 
+    "KBLV"
+    "KDAA"
+    "KDOV"
+    "KFAF"
+    "KFFO"
+    "KFTK"
+    "KGUS"
+    "KHOP"
+    "KLFI"
+    "KMTC"
+    "KMUI"
+    "KOFF"
+    "KRDR"
+    "KWRI"
+    "PABI"
+    "PAFB"
+    "PASY"
+]
+```
+
+any TAF that had a COR remark was removed from the dataset
+## limitations:
+
+- TAF data does not include year and month in the body of the text.  So there is no way for the model to learn seasonal patterns like lake effect snow or thunderstorms in the summer.  This could be solved by adding the year and month to the TAF body text.
+
+- The model reads left to right and with the TX/TN groups at the end of the forecast, the model is not able to infer precipitation types or icing conditions.  This could be solved by moving the TX/TN groups to the beginning of the forecast.
+
+## Usage
+```  python
+Python 3.10.6 (main, Nov  2 2022, 18:53:38) [GCC 11.3.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import model
+>>> pipeline = model.pipeline("gpt2", "taf")
+>>> pipeline.generate_forecast("TAF KBLV 140100Z 31015KT 8000")
+[['TAF KBLV 140100Z 31015KT 8000 -SHRA BKN010 OVC020 QNH2994INS', 'BECMG 1402/1403 VRB06KT 9999 NSW BKN020 QNH3004INS TX18/1319Z TN11/1410Z']]
+```
+
+## TODO:
+
+- [ ] add year and month to TAF body text
+- [ ] move TX/TN groups to beginning of forecast
+- [ ] add more locations to dataset
+- [ ] add more TAFs from each location to dataset
+
+
+
+
 ## CLIENT: Available Scripts
 
 ### npm start

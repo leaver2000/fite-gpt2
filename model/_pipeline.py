@@ -6,16 +6,20 @@ from typing import TypedDict, TypeAlias, Optional, Literal, Iterable
 from typing_extensions import Unpack
 
 import torch
-from transformers import GPT2LMHeadModel, GPT2Tokenizer, TextGenerationPipeline
+from transformers import (
+    GPT2LMHeadModel,
+    TextGenerationPipeline,
+)
 from transformers.tokenization_utils_base import (
     BatchEncoding,
     PaddingStrategy,
     TruncationStrategy,
 )
+from .typing import (
+    GPT2TokenizerType,
+)
 
-__all__ = [
-    "CodePredictionPipeline",
-]
+__all__ = ["CodePredictionPipeline", "HyperParameters", "HyperParameterStrategy"]
 StandardTokens = Literal[
     "bos_token",
     "eos_token",
@@ -212,6 +216,18 @@ class HyperParameterStrategy(dict, enum.Enum):
     TOP_KP_T175 = TOP_KP | TEMP_175
 
 
+class TokenIds(TypedDict):
+    pad_token_id: int | None
+    bos_token_id: int | None
+    eos_token_id: int | None
+
+
+def strip_split(text_string: str) -> list[str]:
+    return [
+        string.strip() for string in re.split(r"(?=BECMG|TEMPO)", text_string) if string
+    ]
+
+
 @dataclasses.dataclass
 class CodePredictionPipeline(TextGenerationPipeline):
     """
@@ -219,7 +235,7 @@ class CodePredictionPipeline(TextGenerationPipeline):
     """
 
     model: GPT2LMHeadModel
-    tokenizer: GPT2Tokenizer
+    tokenizer: GPT2TokenizerType
     device: torch.device
     max_length: int
     num_return_sequences: int = 3
@@ -280,7 +296,7 @@ class CodePredictionPipeline(TextGenerationPipeline):
         add_special_tokens: bool = True,
         padding: PaddingStrategy | bool = True,
         truncation: TruncationStrategy | bool = True,
-        # 
+        #
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
@@ -289,7 +305,7 @@ class CodePredictionPipeline(TextGenerationPipeline):
         **kwargs,
     ) -> BatchEncoding:
 
-        return self.tokenizer.__call__(
+        return self.tokenizer(
             text,
             add_special_tokens=add_special_tokens,  # default = True
             padding=padding,  # default = False
@@ -310,30 +326,20 @@ class CodePredictionPipeline(TextGenerationPipeline):
             **kwargs,
         ).to(self.device)
 
-    def decode(
+    def batch_decode(
         self,
         token_ids: torch.Tensor | Iterable[torch.Tensor],
-        **kwargs: Unpack[DecoderKWARGS],
     ) -> list[list[str]]:
 
         text_list = self.tokenizer.batch_decode(
             token_ids,
-            **kwargs,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
         )
-        return [
-            re.split(r"(?=TEMPO|BECMG)", text.replace("\n", "")) for text in text_list
-        ]
 
-    def escape_special_tokens(self, *token_names: StandardTokens) -> Iterable[str]:
-        """function to escape special tokens for regex"""
-        token_map = self.tokenizer.special_tokens_map
+        # type: ignore
 
-        for token_name in token_names:
-            token = token_map[token_name]
-            if isinstance(token, str):
-                yield token.replace("|", "\\|")
-            else:
-                yield from (WS_OPT + tkn.replace("|", "\\|") + WS_OPT for tkn in token)
+        return [strip_split(text.replace("\n", "")) for text in text_list]
 
     def generate_forecast(
         self,
@@ -348,12 +354,14 @@ class CodePredictionPipeline(TextGenerationPipeline):
         they can be overwritten by kwargs.
         """
         # unpack some variables
+        model, token_ids = self.model, self.token_ids
         if isinstance(text, list):
             text = [t.strip() for t in text]
+            self.tokenizer.padding_side = "left"
         else:
             text = text.strip()
-        model, token_ids = self.model, self.token_ids
-        self.tokenizer.padding_side = "left"
+            self.tokenizer.padding_side = "right"
+
         if isinstance(strategy, str):
             strategy = HyperParameterStrategy[strategy]
 
@@ -371,21 +379,13 @@ class CodePredictionPipeline(TextGenerationPipeline):
             max_length=self.max_length,
         )
         # return outputs
-        return self.decode(
-            outputs,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=True,
-        )
+        return self.batch_decode(outputs)
 
     @property
-    def token_ids(self) -> dict[str, int | None]:
-        # ValueError: The following `model_kwargs` are not used by the model:
-        # ['sep_token_id', 'cls_token_id']
-        token_id_keys = {
-            "pad_token_id",
-            "bos_token_id",
-            "eos_token_id",
-        }
-        key_map = {key: getattr(self.tokenizer, key, None) for key in token_id_keys}
+    def token_ids(self) -> TokenIds:
 
-        return key_map  # type: ignore
+        return TokenIds(
+            pad_token_id=self.tokenizer.pad_token_id,
+            bos_token_id=self.tokenizer.bos_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+        )

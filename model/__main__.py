@@ -6,49 +6,60 @@
 import re
 import json
 from typing import Iterable, NamedTuple
-from pathlib import Path
 
 
 import torch
 from transformers import (
     GPT2Config,
-    GPT2Tokenizer,
+    GPT2TokenizerFast,
     GPT2LMHeadModel,
+    Trainer,
+    AddedToken,
+    TrainingArguments,
+    DataCollatorForLanguageModeling,
 )
-from transformers import DataCollatorForLanguageModeling
-from transformers import Trainer, TrainingArguments, AddedToken
 
 from datasets.dataset_dict import DatasetDict
 
+from . import evaluate
 from ._dataset_builder import get_dataset_dict
 from ._pipeline import CodePredictionPipeline, HyperParameterStrategy, HyperParameters
 
 from .util import (
-    unpack_paths,
     SpecialTokens,
+    get_paths,
+    get_model_name,
+    get_language_model,
+    VERSION,
+    MAX_LENGTH,
+    BATCH_SIZE,
+    DEFAULT_DEVICE,
+    JSONL_FILE_MAP,
 )
+
+from .typing import GPT2TokenizerType
 
 
 # DONT CHANGE
 FRAMEWORK = "pt"
-PRE_TRAINED_MODEL_NAME = "gpt2"
-# VERSIONING
+BASE_MODEL_NAME = "gpt2"
+# the dataset name should be mapped to a jsonl file in the store/data
 DATASET_NAME = "taf"
-MODEL_VERSION = 1
-VERSION = f"{MODEL_VERSION}.0"
-MODEL_PATH, DATASET_PATH, RAW_TEXT, JSON_LINES_FILE = unpack_paths(
-    DATASET_NAME, VERSION
-)
-MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-{DATASET_NAME}-{VERSION}"
 
-# RUNTIME VARIABLES
-MAX_LENGTH = 256
-BATCH_SIZE = 8
+if DATASET_NAME not in JSONL_FILE_MAP:
+    raise OSError(
+        f"Dataset name {DATASET_NAME} not found in JSONL_FILE_MAP. Please add it to the map."
+    )
+
+JSONL_FILE = JSONL_FILE_MAP[DATASET_NAME]
+
+MODEL_NAME = get_model_name(BASE_MODEL_NAME, DATASET_NAME, VERSION)
+
+MODEL_PATH, TOKENIZER_PATH, DATASET_PATH = get_paths(MODEL_NAME)
+
 
 # TYPES
-StrPath = str | Path
-
-ADDITIONAL_TOKENS = ("\u0120TAF", "\u0120BECMG", "\u0120TEMPO")
+ADDITIONAL_TOKENS = ["\u0120TAF", "\u0120BECMG", "\u0120TEMPO"]
 # TOKENS to be ignored by the tokenizer
 ADDITIONAL_SPECIAL_TOKENS = SpecialTokens.include(
     AddedToken("LAST", single_word=True, lstrip=True, rstrip=True),
@@ -58,35 +69,22 @@ ADDITIONAL_SPECIAL_TOKENS = SpecialTokens.include(
 )
 
 
-# define the device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
-
-
-def get_language_model(
-    base_model: StrPath = PRE_TRAINED_MODEL_NAME,
-    *args,
-    config: GPT2Config | None = None,
-    verbose: bool = False,
-    **kwargs,
-) -> GPT2LMHeadModel:
-
-    model = GPT2LMHeadModel.from_pretrained(
-        base_model,
-        *args,
-        config=config,
-        **kwargs,
+def fine_tune_tokenizer() -> None:
+    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(
+        BASE_MODEL_NAME,
+        num_labels=2,
+        do_basic_tokenize=False,
     )
-    # should always be in eval mode
-    assert isinstance(model, GPT2LMHeadModel)
-    if verbose:
-        print(model.config)
-    return model.cuda(device)
+
+    tokenizer.add_tokens(ADDITIONAL_TOKENS)  # type: ignore
+    tokenizer.add_special_tokens(ADDITIONAL_SPECIAL_TOKENS)  # type: ignore
+    tokenizer.save_pretrained(TOKENIZER_PATH)
 
 
-def fine_tune_model(tokenizer: GPT2Tokenizer) -> None:
+def fine_tune_model(tokenizer: GPT2TokenizerType) -> None:
     torch.cuda.empty_cache()
     model = get_language_model(
-        PRE_TRAINED_MODEL_NAME,
+        BASE_MODEL_NAME,
         # GPT2Config -> https://huggingface.co/transformers/v3.5.1/model_doc/gpt2.html#gpt2config
         config=GPT2Config(
             activation_function="gelu_new",
@@ -100,7 +98,7 @@ def fine_tune_model(tokenizer: GPT2Tokenizer) -> None:
     if not DATASET_PATH.exists():
         print("***** Dataset not found, creating dataset... *****")
         (
-            get_dataset_dict(RAW_TEXT, JSON_LINES_FILE)
+            get_dataset_dict(JSONL_FILE)
             .map(
                 lambda x: tokenizer(x["prompt"], truncation=True, padding=True),
                 batch_size=BATCH_SIZE,
@@ -192,47 +190,47 @@ class ResultOutput(NamedTuple):
     hyper_parameters: HyperParameterStrategy | HyperParameters
 
 
-def run(text_input: str) -> list[ResultOutput]:
-    """
-    ### example:
-    provided the string below the model correctly encoded the temporary group
-    by including a visibility obstruction and a lower ceiling.
-    this is a very common use case when encoding TEMPO groups during showers
+def train() -> tuple[GPT2LMHeadModel, GPT2TokenizerFast]:
+    if not TOKENIZER_PATH.exists():
+        print("***** Tokenizer not found, creating tokenizer... *****")
+        fine_tune_tokenizer()
 
-    The third line in the taf has a-lot more randomness to it.
-    """
-    tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
-        PRE_TRAINED_MODEL_NAME,
-        num_labels=2,
-        do_basic_tokenize=False,
+    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(
+        TOKENIZER_PATH,
     )
 
-    tokenizer.add_tokens(ADDITIONAL_TOKENS)  # type: ignore
-    tokenizer.add_special_tokens(ADDITIONAL_SPECIAL_TOKENS)  # type: ignore
     if not MODEL_PATH.exists():
-        # if a new model is being trained fine tune the model
+        print("***** Model not found, creating model... *****")
         fine_tune_model(tokenizer)
     # load the model from the saved path
-    model = get_language_model(MODEL_PATH)
+    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(MODEL_PATH)  # type: ignore
     model.resize_token_embeddings(len(tokenizer))
 
-    print("***** batch_decode -> ... *****")
+    return model, tokenizer
+
+
+def get_results(prompts: list[str]) -> list[ResultOutput]:
+
+    model, tokenizer = train()
+
     pipe = CodePredictionPipeline(
         model=model,
         tokenizer=tokenizer,
-        device=device,
+        device=DEFAULT_DEVICE,
         max_length=MAX_LENGTH,
-        num_return_sequences=3,
+        num_return_sequences=1,
     )
 
     def generate_forecast_output(*strategies: HyperParameterStrategy):
+
         for strategy in strategies:
-            for forecast in pipe.generate_forecast(text_input, strategy=strategy):
+            generated_text_list = pipe.generate_forecast(prompts, strategy=strategy)
+            for prompt_text, generated_text in zip(prompts, generated_text_list):
                 yield ResultOutput(
                     model=MODEL_NAME,
-                    prompt_text=text_input,
-                    generated_text=forecast,
-                    score=0.0,  # TODO: ...
+                    prompt_text=prompt_text,
+                    generated_text=generated_text,
+                    score=evaluate.taf(prompt_text, generated_text),  # TODO: ...
                     strategy=strategy.name,
                     hyper_parameters=strategy,
                 )
@@ -240,42 +238,27 @@ def run(text_input: str) -> list[ResultOutput]:
     return list(generate_forecast_output(*HyperParameterStrategy))
 
 
-def pipeline() -> CodePredictionPipeline:
-    tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
-        PRE_TRAINED_MODEL_NAME,
-        num_labels=2,
-        do_basic_tokenize=False,
-    )
-
-    tokenizer.add_tokens(ADDITIONAL_TOKENS)  # type: ignore
-    tokenizer.add_special_tokens(ADDITIONAL_SPECIAL_TOKENS)  # type: ignore
-    model = get_language_model(MODEL_PATH)
-    model.resize_token_embeddings(len(tokenizer))
-    return CodePredictionPipeline(
-        model=model,
-        tokenizer=tokenizer,
-        device=device,
-        max_length=MAX_LENGTH,
-        num_return_sequences=3,
-    )
-
-
-def many(text_input: str):
-    text_promps = (
-        "TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\nTEMPO 0200/0206 5000",
-        "TAF KGTB 251700Z 2517/2623 26012G20KT",
+def batch(text_input: str) -> None:
+    text_prompts = [
+        (
+            "TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\n"
+            "TEMPO 0200/0206 5000"
+        ),
+        ("TAF KGTB 251700Z 2517/2623 26012G20KT"),
         (
             "TAF KGTB 251700Z 2517/2623 26012G20KT 9999 OVC008 QNH2970INS\n"
             "BECMG 2519/2520 27009KT 9999 SCT009 OVC015 QNH2976INS\n"
             "BECMG 2610/2611 VRB06KT 9999 BKN015 OVC025 QNH2991INS"
         ),
-        "TAF KMTC 252000Z 2520/2702 29012G20KT 9999 SKC",
-        "TAF PASY 251400Z 2514/2620 11006KT 9999 FEW030 FEW045 SCT100 QNH3002INS\nBECMG 2519/2520",
+        ("TAF KMTC 252000Z 2520/2702 29012G20KT 9999 SKC"),
+        (
+            "TAF PASY 251400Z 2514/2620 11006KT 9999 FEW030 FEW045 SCT100 QNH3002INS\n"
+            "BECMG 2519/2520"
+        ),
         text_input,
-    )
-    results = []
-    for text_input in text_promps:
-        results.extend([result._asdict() for result in run(text_input)])
+    ]
+
+    results = [result._asdict() for result in get_results(text_prompts)]
 
     with open("results.json", "w") as f:
         json.dump(results, f, indent=4)
@@ -308,7 +291,9 @@ def validate():
 
 
 def main(text_input: str) -> None:
-    run(text_input)
+    results = get_results([text_input])
+    for result in results:
+        print("\n ".join(result.generated_text) + "\n")
 
 
 if __name__ == "__main__":
@@ -325,10 +310,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     match args.function:
         case "main":
-            result = main(args.text)
-            print(result)
-        case "many":
-            many(args.text)
+            main(args.text)
+        case "train":
+            train()
+        case "batch":
+            batch(args.text)
         case "validate":
             import pandas as pd
 

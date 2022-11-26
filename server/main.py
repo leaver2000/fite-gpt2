@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Literal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -18,6 +18,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+taf_pipeline = gpt2.pipeline()
+PIPELINES = {
+    "TAF": taf_pipeline,
+}
+
 
 @app.get("/")
 async def root():
@@ -25,10 +30,11 @@ async def root():
     return {"message": "Hello World"}
 
 
-@app.post("/generate/")
-def generate(request:Request):
+@app.post("/generate/{model_name}")
+def generate(request: Request, model_name: Literal["TAF"]):
     """post route to generate a terminal aerodrome forecast"""
-    print("Generating TAF for: ", request.userInput)
-    results = gpt2.pipeline.predict(request.userInput.upper())  # type: ignore
+    print(f"Generating {model_name} for: ", request.userInput)
+
+    results = PIPELINES[model_name].generate_forecast(request.userInput.upper())
     print("Results: ", results)
-    return [{"generated_text":result["generated_text"].upper()} for result in results] # type: ignore
+    return [{"generated_text": "\n ".join(result)} for result in results]  # type: ignore
