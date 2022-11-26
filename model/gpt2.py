@@ -3,45 +3,50 @@
 
 
 """
-import numpy as np
-import pandas as pd
+import re
+import json
+from typing import Iterable, NamedTuple
+from pathlib import Path
+
+
 import torch
-from typing import Iterable
 from transformers import (
     GPT2Config,
     GPT2Tokenizer,
     GPT2LMHeadModel,
 )
-from transformers import Trainer, TrainingArguments, AddedToken
 from transformers import DataCollatorForLanguageModeling
+from transformers import Trainer, TrainingArguments, AddedToken
 
 from datasets.dataset_dict import DatasetDict
-from typing import NamedTuple
-import re
-from typing import Iterable
+
 from ._dataset_builder import get_dataset_dict
-from ._pipeline import CodePredictionPipeline
+from ._pipeline import CodePredictionPipeline, HyperParameterStrategy, HyperParameters
+
 from .util import (
     unpack_paths,
     SpecialTokens,
 )
-from pathlib import Path
 
-StrPath = str | Path
+
 # DONT CHANGE
 FRAMEWORK = "pt"
 PRE_TRAINED_MODEL_NAME = "gpt2"
 # VERSIONING
+DATASET_NAME = "taf"
 MODEL_VERSION = 1
-TOKENIZER_VERSION = 5
-DATASET_VERSION = 12
-VERSION = f"0.0.3dev-{MODEL_VERSION}.{TOKENIZER_VERSION}.{DATASET_VERSION}"
-MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-taf-{VERSION}"
-MODEL_PATH, DATASET_PATH, JSON_LINES_FILE = unpack_paths(VERSION)
+VERSION = f"{MODEL_VERSION}.0"
+MODEL_PATH, DATASET_PATH, RAW_TEXT, JSON_LINES_FILE = unpack_paths(
+    DATASET_NAME, VERSION
+)
+MODEL_NAME = f"{PRE_TRAINED_MODEL_NAME}-{DATASET_NAME}-{VERSION}"
+
 # RUNTIME VARIABLES
 MAX_LENGTH = 256
 BATCH_SIZE = 8
 
+# TYPES
+StrPath = str | Path
 
 ADDITIONAL_TOKENS = ("\u0120TAF", "\u0120BECMG", "\u0120TEMPO")
 # TOKENS to be ignored by the tokenizer
@@ -51,31 +56,10 @@ ADDITIONAL_SPECIAL_TOKENS = SpecialTokens.include(
     AddedToken("AMDS", single_word=True, lstrip=True, rstrip=True),
     AddedToken("RMK", single_word=True, lstrip=True, rstrip=True),
 )
-# special tokens
 
 
-class HyperParameters(NamedTuple):
-    """
-    HyperParameters
-    """
-
-    repetition_penalty: float
-    "repetition penalty is a hyperparameter that controls the model's repetition of the same token. The higher the value, the more repetitive the text will be."
-    temperature: float
-    "temperature is a hyperparameter that controls the randomness of the model's predictions. The higher the value, the more random the text will be."
-    top_k: int
-    "top_k is a hyperparameter that controls the number of tokens that the model will consider when predicting the next token. The higher the value, the more random the text will be."
-    top_p: float
-    "top_p is a hyperparameter that controls the number of tokens that the model will consider when predicting the next token. The higher the value, the more random the text will be."
-
-
-HYPER_PARAMETERS = HyperParameters(
-    repetition_penalty=100.0, temperature=0.1, top_k=1, top_p=0.2
-)
-REPETITION_PENALTY, TEMPERATURE, TOP_K, TOP_P = HYPER_PARAMETERS
 # define the device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
-# load tokenizer
 
 
 def get_language_model(
@@ -89,8 +73,8 @@ def get_language_model(
     model = GPT2LMHeadModel.from_pretrained(
         base_model,
         *args,
-        **kwargs,
         config=config,
+        **kwargs,
     )
     # should always be in eval mode
     assert isinstance(model, GPT2LMHeadModel)
@@ -102,11 +86,12 @@ def get_language_model(
 def fine_tune_model(tokenizer: GPT2Tokenizer) -> None:
     torch.cuda.empty_cache()
     model = get_language_model(
+        PRE_TRAINED_MODEL_NAME,
         # GPT2Config -> https://huggingface.co/transformers/v3.5.1/model_doc/gpt2.html#gpt2config
         config=GPT2Config(
             activation_function="gelu_new",
             layer_norm_eps=1e-05,
-        )
+        ),
     )
     # resize the embedding layer to match the new vocabulary size
     model.resize_token_embeddings(len(tokenizer))
@@ -115,7 +100,7 @@ def fine_tune_model(tokenizer: GPT2Tokenizer) -> None:
     if not DATASET_PATH.exists():
         print("***** Dataset not found, creating dataset... *****")
         (
-            get_dataset_dict(JSON_LINES_FILE)
+            get_dataset_dict(RAW_TEXT, JSON_LINES_FILE)
             .map(
                 lambda x: tokenizer(x["prompt"], truncation=True, padding=True),
                 batch_size=BATCH_SIZE,
@@ -171,8 +156,8 @@ def fine_tune_model(tokenizer: GPT2Tokenizer) -> None:
         train_dataset=tokenized_ds["train"],  # type: ignore
         eval_dataset=tokenized_ds["test"],  # type: ignore
         tokenizer=tokenizer,
-        model_init=None,  # type:ignore () -> PreTrainedModel = None,
         compute_metrics=None,  # type:ignore ((EvalPrediction) -> Dict[Unknown, Unknown]) | None = None,
+        model_init=None,  # type:ignore () -> PreTrainedModel = None,
         callbacks=None,  # type:ignore List[TrainerCallback] | None = None,
         optimizers=(
             None,
@@ -186,7 +171,9 @@ def fine_tune_model(tokenizer: GPT2Tokenizer) -> None:
     model.save_pretrained(MODEL_PATH)  # type: ignore
 
 
-def handle_prediction(result) -> Iterable[list[str]]:
+def handle_prediction(
+    result: Iterable[dict[str, str]] | list[dict[str, str]]
+) -> Iterable[list[str]]:
     for item in result:
         if isinstance(item, list):
             yield from handle_prediction(item)
@@ -194,16 +181,25 @@ def handle_prediction(result) -> Iterable[list[str]]:
             yield re.split(r"(?=BECMG|TEMPO)", item["generated_text"])
 
 
-def main(text: str) -> None:
+class ResultOutput(NamedTuple):
+    """ResultOutput is a named tuple that contains the output of the model."""
+
+    model: str
+    prompt_text: str
+    generated_text: list[str]
+    score: float
+    strategy: str
+    hyper_parameters: HyperParameterStrategy | HyperParameters
+
+
+def run(text_input: str) -> list[ResultOutput]:
     """
     ### example:
-    provided the string below the model correctly encoded the temporary group by including a visibility obstruction and a lower ceiling.
+    provided the string below the model correctly encoded the temporary group
+    by including a visibility obstruction and a lower ceiling.
     this is a very common use case when encoding TEMPO groups during showers
 
     The third line in the taf has a-lot more randomness to it.
-
-    >>> python -m model.gpt2 --text "TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\\nTEMPO 0200/0206 5000"
-    [[{'generated_text': 'TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\\nTEMPO 0200/0206 5000 BR BKN015\\nBECMG 0314 VRG18650 510004 510013 650726 521044 510353 SN SCT024 620303 530154 540403 FEW017 VCSH 0512Z 54 01006W 4800 RA SKC WS009CB 56012QLD035 520204 FG 9000 DVRS 621958 610002 623504 3'}]]
     """
     tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
         PRE_TRAINED_MODEL_NAME,
@@ -220,119 +216,136 @@ def main(text: str) -> None:
     model = get_language_model(MODEL_PATH)
     model.resize_token_embeddings(len(tokenizer))
 
-    encoding = tokenizer(
-        text,
-        return_tensors=FRAMEWORK,
-        truncation=True,
-    ).to(device)
-    # model.pad_token_id = tokenizer.eos_token_id
-    outputs = model.generate(encoding.input_ids, do_sample=False, max_length=MAX_LENGTH)
     print("***** batch_decode -> ... *****")
-    for res in (
-        "\n ".join(re.split(r"(?=BECMG|TEMPO)", item))
-        for item in tokenizer.batch_decode(outputs, skip_special_tokens=True)
-    ):
-        print(res)
-    # print(prediction)
     pipe = CodePredictionPipeline(
         model=model,
         tokenizer=tokenizer,
         device=device,
-        top_k=TOP_K,
-        top_p=TOP_P,
-        repetition_penalty=REPETITION_PENALTY,
-        temperature=TEMPERATURE,
         max_length=MAX_LENGTH,
         num_return_sequences=3,
     )
-    print("***** pipe.forecast -> ... *****")
-    for prediction in handle_prediction(pipe.forecast(text)):
-        print("\n ".join(prediction))
-        print()
-    print("***** pipe.__call__ -> ... *****")
-    for prediction in handle_prediction(pipe(text)):
-        print("\n ".join(prediction))
-        print()
-    # print(list(handle_prediction(prediction)))
-    # print(pipe(
-    # text,
-    #     # temperature=.9,
-    #     # return_full_text=True, #  If set to False only added text is returned, otherwise the full text is returned Only meaningful if return_text is set to True.
-    #     # # num_return_sequences=3,
-    #     # early_stopping=False,
-    #     # clean_up_tokenization_spaces = False,
-    #     # handle_long_generation = "hole",
-    #     # handle_
-    #     ))
-    # print(tokenizer.get_vocab().keys())
-    # with open("t.txt", "w") as f:
-    #     for key in tokenizer.get_vocab().keys():
-    #         f.write(key + "\n\n")
-    #     # f.write(tokenizer.get_vocab().keys())
-    # print(prediction)
+
+    def generate_forecast_output(*strategies: HyperParameterStrategy):
+        for strategy in strategies:
+            for forecast in pipe.generate_forecast(text_input, strategy=strategy):
+                yield ResultOutput(
+                    model=MODEL_NAME,
+                    prompt_text=text_input,
+                    generated_text=forecast,
+                    score=0.0,  # TODO: ...
+                    strategy=strategy.name,
+                    hyper_parameters=strategy,
+                )
+
+    return list(generate_forecast_output(*HyperParameterStrategy))
 
 
-def test_tokenizer(
-    text: str, additional_special_tokens: list[AddedToken] = ADDITIONAL_SPECIAL_TOKENS
-) -> None:
-    """
-    test the tokenizer
-    """
+def pipeline() -> CodePredictionPipeline:
     tokenizer: GPT2Tokenizer = GPT2Tokenizer.from_pretrained(
         PRE_TRAINED_MODEL_NAME,
         num_labels=2,
-        # TODO: adding a vocab file to the tokenizer
-        # vocab_files={"vocab_file": "vocab.txt"},
-        # vocab_file=os.path.join(MODEL_PATH, "vocab.json"),
-    )
-    special_tokens = SpecialTokens.to_dict()
-    special_tokens["additional_special_tokens"] = additional_special_tokens  # type: ignore
-    tokenizer.add_special_tokens(special_tokens)
-    print(tokenizer.tokenize(text, truncation=True, padding=True))
-    tokens = (
-        "TAF",
-        "\nBECMG",
-        "BECMG",
-        "\nTEMPO",
-        "TEMPO",
-        "VRB",
-        "VRB06KT",
-        "18010G15KT" "BKN030",
-        "BKN030 ",
+        do_basic_tokenize=False,
     )
 
-    for token in tokens:
-        print(token, tokenizer.tokenize(token), sep="=")
-    with open("store/training-data-v2.txt", "r") as f:
-        lines = f.read().split("\n\n###\n\n")
-        # print(lines)
-        for line in lines:
-            lines = line.strip()
-            print(line)
-            print(tokenizer.tokenize(line))
+    tokenizer.add_tokens(ADDITIONAL_TOKENS)  # type: ignore
+    tokenizer.add_special_tokens(ADDITIONAL_SPECIAL_TOKENS)  # type: ignore
+    model = get_language_model(MODEL_PATH)
+    model.resize_token_embeddings(len(tokenizer))
+    return CodePredictionPipeline(
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        max_length=MAX_LENGTH,
+        num_return_sequences=3,
+    )
 
 
-PARSER_ENGINE = {
-    "main": main,
-    "tokenizer": test_tokenizer,
-}
+def many(text_input: str):
+    text_promps = (
+        "TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\nTEMPO 0200/0206 5000",
+        "TAF KGTB 251700Z 2517/2623 26012G20KT",
+        (
+            "TAF KGTB 251700Z 2517/2623 26012G20KT 9999 OVC008 QNH2970INS\n"
+            "BECMG 2519/2520 27009KT 9999 SCT009 OVC015 QNH2976INS\n"
+            "BECMG 2610/2611 VRB06KT 9999 BKN015 OVC025 QNH2991INS"
+        ),
+        "TAF KMTC 252000Z 2520/2702 29012G20KT 9999 SKC",
+        "TAF PASY 251400Z 2514/2620 11006KT 9999 FEW030 FEW045 SCT100 QNH3002INS\nBECMG 2519/2520",
+        text_input,
+    )
+    results = []
+    for text_input in text_promps:
+        results.extend([result._asdict() for result in run(text_input)])
+
+    with open("results.json", "w") as f:
+        json.dump(results, f, indent=4)
+
+
+def validate():
+    with open("results.json") as f:
+        results = (ResultOutput(**result) for result in json.load(f))
+
+    for result in results:
+        score = 0.0
+        # looking at the most last line in the prompt text
+        prompt = result.prompt_text.split("\n")[-1]
+        if "TS" in prompt:
+            # only one line should start with that prompt
+            (last_prompt_line,) = (
+                line for line in result.generated_text if line.startswith(prompt)
+            )
+            # if the prompt has a TS in it then the generated text should have a CB remark
+            if "CB" in last_prompt_line:
+                score += 1
+            else:
+                score -= 1
+            # there should not be any lower case letters in the generated text
+            if all(line.isupper() for line in result.generated_text):
+                score += 1
+            else:
+                score -= 1
+        yield result._replace(score=score)
+
+
+def main(text_input: str) -> None:
+    run(text_input)
+
 
 if __name__ == "__main__":
 
     import argparse
 
     parser = argparse.ArgumentParser()
+    # positional argument for switch
     parser.add_argument("function", default="main")
-    # add a positional argument for the function to run
-
+    # function arguments
     parser.add_argument(
         "--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT"
     )
     args = parser.parse_args()
     match args.function:
         case "main":
-            main(args.text)
-        case "tokenizer":
-            test_tokenizer(args.text)
-    # PARSER_ENGINE[args.function](args.text)
-    # main(args.text)
+            result = main(args.text)
+            print(result)
+        case "many":
+            many(args.text)
+        case "validate":
+            import pandas as pd
+
+            df = (
+                pd.DataFrame(validate())
+                .drop(columns=["hyper_parameters", "model"])
+                .set_index("strategy")
+            )
+            for name, prompt_text, generated_text, score in df.sort_values(
+                by=["score"], ascending=True
+            ).itertuples():
+                generated_text = "\n ".join(generated_text)
+                print(
+                    f"""
+{name=} {prompt_text=} {score=}
+{generated_text}"""
+                )
+
+        case _:
+            raise ValueError(f"Function {args.function} not found")
