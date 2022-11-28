@@ -1,32 +1,26 @@
 import re
 import enum
+import random
 import dataclasses
-from typing import TypedDict, TypeAlias, Optional, Literal, Iterable
+from typing import TypedDict, TypeAlias, Optional, Iterable
 
 from typing_extensions import Unpack
 
 import torch
-from transformers import GPT2LMHeadModel, GPT2Tokenizer, TextGenerationPipeline
+from transformers import (
+    GPT2LMHeadModel,
+    GPT2Tokenizer,
+    GPT2TokenizerFast,
+    TextGenerationPipeline,
+)
 from transformers.tokenization_utils_base import (
     BatchEncoding,
     PaddingStrategy,
     TruncationStrategy,
 )
+from .util import StrEnum
 
-__all__ = [
-    "CodePredictionPipeline",
-]
-StandardTokens = Literal[
-    "bos_token",
-    "eos_token",
-    "pad_token",
-    "unk_token",
-    "sep_token",
-    "additional_special_tokens",
-]
-WS_OPT = r"(?:\s+)?"  # optional whitespace
-uint: TypeAlias = int
-UnsignedFloat: TypeAlias = float
+__all__ = ["CodePredictionPipeline", "HyperParameters", "HyperParameterStrategy"]
 
 
 class Sample(TypedDict):
@@ -35,38 +29,30 @@ class Sample(TypedDict):
     num_beam_groups: int
 
 
-class _GeneratedText(TypedDict):
-    generated_text: str
-
-
-GeneratedText = dict[str, str] | _GeneratedText
-GenerationStrategy = Literal["greedy", "beam_search", "sample", "top_k", "top_p"]
-
-
 class GeneratorKWARGS(TypedDict):
-    max_length: Optional[uint]
-    min_length: Optional[uint]
+    max_length: Optional[int]
+    min_length: Optional[int]
     do_sample: bool
     early_stopping: bool
-    num_beams: Optional[uint]
-    temperature: Optional[UnsignedFloat]
-    top_k: Optional[uint]
-    top_p: Optional[UnsignedFloat]
-    repetition_penalty: Optional[UnsignedFloat]
+    num_beams: Optional[int]
+    temperature: Optional[float]
+    top_k: Optional[int]
+    top_p: Optional[float]
+    repetition_penalty: Optional[float]
     bad_words_ids: Optional[list[int]]
-    bos_token_id: Optional[uint]
-    pad_token_id: Optional[uint]
-    eos_token_id: Optional[uint]
-    length_penalty: Optional[UnsignedFloat]
-    no_repeat_ngram_size: Optional[uint]
-    encoder_no_repeat_ngram_size: Optional[uint]
-    num_return_sequences: Optional[uint]
-    max_time: Optional[UnsignedFloat]
-    max_new_tokens: Optional[uint]
-    decoder_start_token_id: Optional[uint]
+    bos_token_id: Optional[int]
+    pad_token_id: Optional[int]
+    eos_token_id: Optional[int]
+    length_penalty: Optional[float]
+    no_repeat_ngram_size: Optional[int]
+    encoder_no_repeat_ngram_size: Optional[int]
+    num_return_sequences: Optional[int]
+    max_time: Optional[float]
+    max_new_tokens: Optional[int]
+    decoder_start_token_id: Optional[int]
     use_cache: bool
-    num_beam_groups: Optional[uint]
-    diversity_penalty: Optional[UnsignedFloat]
+    num_beam_groups: Optional[int]
+    diversity_penalty: Optional[float]
     # prefix_allowed_tokens_fn: Optional[Callable[[int, torch.Tensor], list[int]]]
     # logits_processor: Optional[LogitsProcessorList]
     # renormalize_logits: bool
@@ -76,11 +62,11 @@ class GeneratorKWARGS(TypedDict):
     output_hidden_states: bool
     output_scores: bool
     return_dict_in_generate: bool
-    forced_bos_token_id: Optional[uint]
-    forced_eos_token_id: Optional[uint]
+    forced_bos_token_id: Optional[int]
+    forced_eos_token_id: Optional[int]
     remove_invalid_values: bool
     synced_gpus: bool
-    exponential_decay_length_penalty: Optional[tuple[uint, UnsignedFloat]]
+    exponential_decay_length_penalty: Optional[tuple[int, float]]
     suppress_tokens: Optional[list[int]]
     begin_suppress_tokens: Optional[list[int]]
     forced_decoder_ids: Optional[list[list[int]]]
@@ -127,6 +113,9 @@ _BASE_SAMPLE = HyperParameters(
 
 
 class HyperParameterStrategy(dict, enum.Enum):
+    def __str__(self) -> str:
+        return self.name
+
     value: HyperParameters
     GREEDY = HyperParameters(
         do_sample=False,
@@ -212,6 +201,23 @@ class HyperParameterStrategy(dict, enum.Enum):
     TOP_KP_T175 = TOP_KP | TEMP_175
 
 
+HyperParameterStrategys: TypeAlias = StrEnum(
+    "HyperParameterStrategys", HyperParameterStrategy._member_names_
+)
+
+
+class TokenIds(TypedDict):
+    pad_token_id: int | None
+    bos_token_id: int | None
+    eos_token_id: int | None
+
+
+def strip_split(text_string: str) -> list[str]:
+    return [
+        string.strip() for string in re.split(r"(?=BECMG|TEMPO)", text_string) if string
+    ]
+
+
 @dataclasses.dataclass
 class CodePredictionPipeline(TextGenerationPipeline):
     """
@@ -219,7 +225,7 @@ class CodePredictionPipeline(TextGenerationPipeline):
     """
 
     model: GPT2LMHeadModel
-    tokenizer: GPT2Tokenizer
+    tokenizer: GPT2Tokenizer | GPT2TokenizerFast
     device: torch.device
     max_length: int
     num_return_sequences: int = 3
@@ -242,45 +248,13 @@ class CodePredictionPipeline(TextGenerationPipeline):
 
         super().__init__(task="text-generation", **config)
 
-    def forecast(
-        self,
-        text: str,
-        # max_length=120,
-        num_beams=3,
-        temperature: float = 0.1,  # randomness -> The higher the temperature, the more random the text will be.
-        top_k: int = 1,  # top-k-filtering -> number of highest probability vocabulary tokens to keep.
-        #  Between 1 and infinity.
-        top_p: float = 0.2,  # top-p-filtering -> probability of keeping tokens. Between 0 and 1.
-        repetition_penalty=0.2,  # strictly positive float
-        length_penalty=1.0,
-        early_stopping=True,
-        num_return_sequences=1,
-        #  temperature=0.9, top_k=10, top_p=0.92, num_return_sequences=1
-    ):
-
-        return self(
-            text,
-            max_length=self.max_length,
-            num_beams=num_beams,
-            # num_beam_groups=num_beams,  # `num_beams` should be divisible by `num_beam_groups` for group beam search.
-            top_k=top_k,
-            top_p=top_p,
-            temperature=temperature,
-            repetition_penalty=repetition_penalty,
-            length_penalty=length_penalty,
-            early_stopping=early_stopping,
-            num_return_sequences=num_return_sequences,
-            do_sample=False,
-            # clean_up_tokenization_spaces=False,
-        )
-
     def encode(
         self,
         text: str | list[str],
         add_special_tokens: bool = True,
         padding: PaddingStrategy | bool = True,
         truncation: TruncationStrategy | bool = True,
-        # 
+        #
         return_overflowing_tokens: bool = False,
         return_special_tokens_mask: bool = False,
         return_offsets_mapping: bool = False,
@@ -289,7 +263,7 @@ class CodePredictionPipeline(TextGenerationPipeline):
         **kwargs,
     ) -> BatchEncoding:
 
-        return self.tokenizer.__call__(
+        return self.tokenizer(
             text,
             add_special_tokens=add_special_tokens,  # default = True
             padding=padding,  # default = False
@@ -310,37 +284,24 @@ class CodePredictionPipeline(TextGenerationPipeline):
             **kwargs,
         ).to(self.device)
 
-    def decode(
+    def batch_decode(
         self,
         token_ids: torch.Tensor | Iterable[torch.Tensor],
-        **kwargs: Unpack[DecoderKWARGS],
     ) -> list[list[str]]:
 
         text_list = self.tokenizer.batch_decode(
             token_ids,
-            **kwargs,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=True,
         )
-        return [
-            re.split(r"(?=TEMPO|BECMG)", text.replace("\n", "")) for text in text_list
-        ]
-
-    def escape_special_tokens(self, *token_names: StandardTokens) -> Iterable[str]:
-        """function to escape special tokens for regex"""
-        token_map = self.tokenizer.special_tokens_map
-
-        for token_name in token_names:
-            token = token_map[token_name]
-            if isinstance(token, str):
-                yield token.replace("|", "\\|")
-            else:
-                yield from (WS_OPT + tkn.replace("|", "\\|") + WS_OPT for tkn in token)
+        return [strip_split(text.replace("\n", "")) for text in text_list]
 
     def generate_forecast(
         self,
         text: str | list[str],
+        strategy: HyperParameterStrategy | HyperParameterStrategys | str | None = None,
         padding: PaddingStrategy | bool = True,
         truncation: TruncationStrategy | bool = True,
-        strategy: HyperParameterStrategy | str | None = None,
         **kwargs: Unpack[HyperParameters],
     ) -> list[list[str]]:
         """
@@ -348,44 +309,33 @@ class CodePredictionPipeline(TextGenerationPipeline):
         they can be overwritten by kwargs.
         """
         # unpack some variables
+        model, token_ids = self.model, self.token_ids
         if isinstance(text, list):
             text = [t.strip() for t in text]
+            self.tokenizer.padding_side = "left"
         else:
             text = text.strip()
-        model, token_ids = self.model, self.token_ids
-        self.tokenizer.padding_side = "left"
-        if isinstance(strategy, str):
-            strategy = HyperParameterStrategy[strategy]
+            self.tokenizer.padding_side = "right"
 
-        # batch_encoding provides the token_ids and attention_mask
-        encoding = self.encode(
-            text,
-            padding=padding,
-            truncation=truncation,
-        )
-        outputs = model.generate(
-            **encoding,
-            **token_ids,
-            **(strategy if strategy else {}),
-            **kwargs,
-            max_length=self.max_length,
-        )
-        # return outputs
-        return self.decode(
-            outputs,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=True,
-        )
+        if not isinstance(strategy, HyperParameterStrategy):
+            strategy = HyperParameterStrategy[
+                strategy if strategy else random.choice(list(HyperParameterStrategys))
+            ]  # type: ignore
+
+        # BatchEncoding provides the token_ids and attention_mask
+        encoding = self.encode(text, padding=padding, truncation=truncation)
+        # update the encoding with the token_ids, hyper-parameters and any kwargs
+        encoding |= token_ids | strategy | kwargs
+        # call the model to generate by unpacking all of the contents of the encoding
+        outputs = model.generate(**encoding, max_length=self.max_length)
+        # return the decoded results
+        return self.batch_decode(outputs)
 
     @property
-    def token_ids(self) -> dict[str, int | None]:
-        # ValueError: The following `model_kwargs` are not used by the model:
-        # ['sep_token_id', 'cls_token_id']
-        token_id_keys = {
-            "pad_token_id",
-            "bos_token_id",
-            "eos_token_id",
-        }
-        key_map = {key: getattr(self.tokenizer, key, None) for key in token_id_keys}
+    def token_ids(self) -> TokenIds:
 
-        return key_map  # type: ignore
+        return TokenIds(
+            pad_token_id=self.tokenizer.pad_token_id,
+            bos_token_id=self.tokenizer.bos_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+        )

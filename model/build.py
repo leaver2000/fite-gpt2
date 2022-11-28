@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Mapping, TypeAlias, TypedDict, Iterable
+from typing import Mapping, TypedDict, Iterable, Literal
 
 import pandas as pd
 import datasets
@@ -8,9 +8,9 @@ from datasets.dataset_dict import DatasetDict
 from datasets.arrow_dataset import Dataset
 
 from .util import SpecialTokens
+from .typing import StrPath, GPT2TokenizerType
 
-
-__all__ = ["get_dataset_dict"]
+__all__ = ["dataset_dict"]
 
 
 FEATURES = datasets.Features(
@@ -25,17 +25,14 @@ TEMPERATURE_GROUP_PATTERN = (
 )
 CHANGE_GROUP_PATTERN = r"\s(?=BECMG|TEMPO)"
 
-SplitString: TypeAlias = Mapping[tuple[int, int], list[str]] | "pd.Series[list[str]]"  # type: ignore
-StrPath: TypeAlias = str | Path
 
-
-class Datum(TypedDict):
+class TafDatum(TypedDict):
     TX_TN: tuple[int, int]
     prompt: str
     completion: str
 
 
-def make_json_lines(text_file: StrPath, json_lines_file: StrPath) -> None:
+def _make_json_lines(text_file: StrPath, json_lines_file: StrPath) -> None:
     if isinstance(json_lines_file, str):
         json_lines_file = Path(json_lines_file)
 
@@ -62,13 +59,15 @@ def make_json_lines(text_file: StrPath, json_lines_file: StrPath) -> None:
         .text
     )
 
-    def generate(taf_mapping: Mapping[tuple[int, int], list[str]]) -> Iterable[Datum]:
+    def generate(
+        taf_mapping: Mapping[tuple[int, int], list[str]]
+    ) -> Iterable[TafDatum]:
         for index, line in taf_mapping.items():
             taf = ""
             for i, text in enumerate(line):
                 taf += f"{text} "
 
-                yield Datum(
+                yield TafDatum(
                     TX_TN=index,
                     prompt=taf,
                     completion=" ".join(line[i + 1 :]),
@@ -106,26 +105,45 @@ def make_json_lines(text_file: StrPath, json_lines_file: StrPath) -> None:
             f.write(json.dumps(row) + "\n")
 
 
-def get_dataset_dict(
-    text_file: StrPath,
+def dataset_dict(
     json_lines_file: StrPath,
+    tokenizer: GPT2TokenizerType,
+    dataset_dict_path: StrPath,
+    batch_size: int,
+    text_file: StrPath | None = None,
     test_size: float = 0.2,
     random_state: int = 42,
-) -> DatasetDict:
+) -> None:
     """Generate a jsonl file from a text file."""
+
+    def tokenize_function(key: Literal["prompt", "completion"]):
+        def wrapper(examples):
+            return tokenizer(examples[key], truncation=True, padding=True)
+
+        return wrapper
 
     if isinstance(json_lines_file, str):
         json_lines_file = Path(json_lines_file)
-
-    if not json_lines_file.exists():
-        make_json_lines(text_file, json_lines_file)
+    if text_file and not json_lines_file.exists():
+        # if the jsonl file doesn't exist, generate it from the text file
+        _make_json_lines(text_file, json_lines_file)
+    elif not json_lines_file.exists():
+        # if the jsonl file doesn't exist and a text file
+        # was not provided, raise an error
+        raise ValueError(
+            "Either text_file or json_lines_file must be provided and json_lines_file must exist."
+            f"{json_lines_file} does not exist."
+        )
 
     df = pd.read_json(json_lines_file, lines=True)
-    train = df.sample(frac=1 - test_size, random_state=random_state)
-    test = df.drop(train.index)
+    train_df = df.sample(frac=1 - test_size, random_state=random_state)
+    test_df = df.drop(train_df.index)
+    train_ds = Dataset.from_pandas(train_df, features=FEATURES, preserve_index=False)
+    test_ds = Dataset.from_pandas(test_df, features=FEATURES, preserve_index=False)
 
-    dataset_dict = DatasetDict(
-        train=Dataset.from_pandas(train, features=FEATURES, preserve_index=False),
-        test=Dataset.from_pandas(test, features=FEATURES, preserve_index=False),
+    (
+        DatasetDict(train=train_ds, test=test_ds)
+        .map(tokenize_function("prompt"), batch_size=batch_size, batched=True)
+        .map(tokenize_function("completion"), batch_size=batch_size, batched=True)
+        .save_to_disk(dataset_dict_path)  # type: ignore
     )
-    return dataset_dict

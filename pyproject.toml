@@ -1,0 +1,41 @@
+[build-system]
+
+requires = [
+    "setuptools>=58.2.0", 
+    "wheel",
+    "numpy==1.23.5",
+    "pandas==1.5.1",
+    "torch==1.13.0",
+    "pyarrow==10.0.0",
+    "transformers==4.24.0",
+    "tokenizers==0.13.2",
+]   
+
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fite"
+version = "0.0.1"
+description = "Forecaster Intergrated TAF Environment; a Python package for autocompletion of Terminal Aerodrome Forecasts."
+requires-python = ">=3.10"
+license = "MIT"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Utilities",
+]
+
+# https://setuptools.pypa.io/en/latest/userguide/datafiles.html
+[tool.setuptools]
+include-package-data = true
+[tool.setuptools.packages.find]
+where = ["src","store/models/gpt2-taf-0.1.0"]
+[tool.setuptools.package-data]
+mypkg = ["*"]

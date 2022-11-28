@@ -2,10 +2,10 @@
     "scripts": {
       "start": "snowpack dev",
       "build": "snowpack build",
-      "server": "uvicorn server.main:app --reload",
-      "test": "web-test-runner \"src/**/*.test.tsx\"",
-      "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\"",
-      "lint": "prettier --check \"src/**/*.{js,jsx,ts,tsx}\""
+      "api": "uvicorn api.main:app --reload --reload-dir api --port 8000",
+      "test": "web-test-runner \"client/**/*.test.tsx\"",
+      "format": "prettier --write \"client/**/*.{js,jsx,ts,tsx}\"",
+      "lint": "prettier --check \"client/**/*.{js,jsx,ts,tsx}\""
     },
     "dependencies": {
       "react": "^17.0.2",
