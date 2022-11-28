@@ -1,3 +1,4 @@
+import os
 import re
 import json
 from typing import Iterable, NamedTuple
@@ -15,18 +16,14 @@ from transformers import (
 
 from datasets.dataset_dict import DatasetDict
 
-from . import build, evaluate
+from . import __version__ as version, build, evaluate
 from .util import (
     SpecialTokens,
-    get_paths,
-    get_model_name,
-    VERSION,
+    get_file_system,
+    DEFAULT_DEVICE,
     MAX_LENGTH,
     BATCH_SIZE,
-    DEFAULT_DEVICE,
-    JSONL_FILE_MAP,
 )
-from .typing import GPT2TokenizerType
 
 from api.pipeline import CodePredictionPipeline, HyperParameterStrategy, HyperParameters
 
@@ -34,20 +31,18 @@ from api.pipeline import CodePredictionPipeline, HyperParameterStrategy, HyperPa
 # DONT CHANGE
 FRAMEWORK = "pt"
 BASE_MODEL_NAME = "gpt2"
-DATASET_NAME = "taf"
 # the dataset name should be mapped to a jsonl file in the store/data
-
-if DATASET_NAME not in JSONL_FILE_MAP:
+DATASET_NAME = os.getenv("FITE_DATASET_NAME", "taf")
+FILE_SYSTEM = get_file_system(BASE_MODEL_NAME, version)
+FILE_MAP = FILE_SYSTEM.get(DATASET_NAME)
+if not FILE_MAP:
     raise OSError(
-        f"Dataset name {DATASET_NAME} not found in JSONL_FILE_MAP. Please add it to the map."
+        f"Dataset name {DATASET_NAME} not found in FILE_MAP. Please add it to the map.\n"
+        f"store/data/{DATASET_NAME}/-training-data.txt is required for this script to run that DATASET"
     )
 
-JSONL_FILE = JSONL_FILE_MAP[DATASET_NAME]
-
-MODEL_NAME = get_model_name(BASE_MODEL_NAME, DATASET_NAME, VERSION)
-
-MODEL_PATH, TOKENIZER_PATH, DATASET_PATH = get_paths(MODEL_NAME)
-
+MODEL_NAME, RAW_TEXT, JSONL_FILE, DATASET_PATH, TOKENIZER_PATH, MODEL_PATH = FILE_MAP
+# TODO: add a config file to the file map for additional tokens n stuff
 
 # TYPES
 ADDITIONAL_TOKENS = ["\u0120TAF", "\u0120BECMG", "\u0120TEMPO"]
@@ -72,7 +67,7 @@ def fine_tune_tokenizer() -> None:
     tokenizer.save_pretrained(TOKENIZER_PATH)
 
 
-def fine_tune_model(tokenizer: GPT2TokenizerType) -> None:
+def fine_tune_model(tokenizer: GPT2TokenizerFast) -> None:
     torch.cuda.empty_cache()
     model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(
         BASE_MODEL_NAME,
@@ -83,13 +78,26 @@ def fine_tune_model(tokenizer: GPT2TokenizerType) -> None:
         ),
     ).to(  # type: ignore
         DEFAULT_DEVICE
-    )  # type: ignore
+    )
     # resize the embedding layer to match the new vocabulary size
     model.resize_token_embeddings(len(tokenizer))
 
     # if dataset does not exist, create it
     if not DATASET_PATH.exists():
         print("***** Dataset not found, creating dataset... *****")
+        if not JSONL_FILE.exists():
+            print("***** json lines file not found, creating json lines... *****")
+            build.json_lines(  # TODO: add a config file to the file map for additional tokens n stuff
+                lambda s: s.str.extract(build.TEMPERATURE_GROUP_PATTERN, expand=True)
+                .stack()
+                .str.replace("M", "-")
+                .unstack(),
+                "\n\n###\n\n",
+                sep_pattern="\n",
+                text_file=RAW_TEXT,
+                jsonl_file=JSONL_FILE,
+            )
+
         build.dataset_dict(
             JSONL_FILE,
             tokenizer,
