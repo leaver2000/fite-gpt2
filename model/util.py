@@ -2,25 +2,22 @@ import os
 import re
 import enum
 from pathlib import Path
-from typing import Literal
+from typing import NamedTuple, TypeAlias
 
 import torch
 from transformers import AddedToken
 
-from . import __version__ as VERSION
-from .typing import ModelPath, DatasetPath
 
 __all__ = [
     "SpecialTokens",
     "RegexPatterns",
-    "get_model_name",
+    # "get_model_name",
     # Path constants and functions
-    "get_paths",
     "ROOT_DATASET_PATH",
     "ROOT_MODEL_PATH",
-    "JSONL_FILE_MAP",
     "MAX_LENGTH",
     "BATCH_SIZE",
+    "get_file_system",
 ]
 # RUNTIME VARIABLES
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", 8))
@@ -31,12 +28,44 @@ ROOT_DATASET_PATH = STORE / "datasets"
 ROOT_TOKENIZER_PATH = STORE / "tokenizer"
 ROOT_DATA_PATH = STORE / "data"
 DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
-JSONL_FILE_MAP = {
-    "taf": ROOT_DATA_PATH / "taf-training-data.jsonl",
-}
-BaseModelNames = Literal["gpt2"]
-DatasetNames = Literal["taf"]
 
+
+ModelName: TypeAlias = str
+RawTextFile: TypeAlias = Path
+JSONLinesFile: TypeAlias = Path
+DatasetPath: TypeAlias = Path
+TokenizerPath: TypeAlias = Path
+ModelPath: TypeAlias = Path
+
+
+class FileMap(NamedTuple):
+    name: ModelName
+    raw_text: RawTextFile
+    jsonl: JSONLinesFile
+    dataset: DatasetPath
+    tokenizer: TokenizerPath
+    model: ModelPath
+
+
+def get_file_system(base_model: str, version: str) -> dict[str, FileMap]:
+    fs = {}
+    dataset_names = {
+        file.stem.rstrip("-training-data") for file in ROOT_DATA_PATH.iterdir()
+    }
+    for name in dataset_names:
+        model_name = f"{base_model}-{name}-{version}"
+        fs[name] = FileMap(
+            name=model_name,
+            raw_text=ROOT_DATA_PATH / f"{name}-training-data.txt",
+            jsonl=ROOT_DATA_PATH / f"{name}-training-data.jsonl",
+            dataset=ROOT_DATASET_PATH / model_name,
+            tokenizer=ROOT_TOKENIZER_PATH / model_name,
+            model=ROOT_MODEL_PATH / model_name,
+        )
+    return fs
+
+
+"""a mapping of FileMaps to the various paths used in the project"""
 
 TOKEN_PATTERN = re.compile(
     r"(?<=\s\d{3})(?=\d{2,3})|(?=KT)|(?=G\d{2}KT)|(?=G\d{3}KT)|(?<=FEW|SCT|BKN|OVC)|(?<=(FEW|SCT|BKN|OVC)\d{3})(?=CB)"
@@ -65,24 +94,22 @@ def _path_is_empty(path: Path) -> bool:
     return path.exists() and not os.listdir(path)
 
 
-def get_paths(model_name: str) -> tuple[ModelPath, Path, DatasetPath]:
-    paths = (
-        ROOT_MODEL_PATH / model_name,
-        ROOT_TOKENIZER_PATH / model_name,
-        ROOT_DATASET_PATH / model_name,
-    )
+# def get_paths(model_name: str) -> tuple[ModelPath, Path, DatasetPath]:
+#     paths = (
+#         ROOT_MODEL_PATH / model_name,
+#         ROOT_TOKENIZER_PATH / model_name,
+#         ROOT_DATASET_PATH / model_name,
+#     )
 
-    for path in paths:
-        if path.exists() and _path_is_empty(path):
-            # remove the path if it exists and is empty
-            path.rmdir()
-    return paths
+#     for path in paths:
+#         if path.exists() and _path_is_empty(path):
+#             # remove the path if it exists and is empty
+#             path.rmdir()
+#     return paths
 
 
-def get_model_name(
-    base_model: BaseModelNames, dataset_name: DatasetNames, version: str = VERSION
-) -> str:
-    return f"{base_model}-{dataset_name}-{version}"
+# def get_model_name(base_model: str, dataset_name: str, version: str = VERSION) -> str:
+#     return f"{base_model}-{dataset_name}-{version}"
 
 
 class TokenEnum(str, enum.Enum):

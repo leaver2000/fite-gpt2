@@ -45,6 +45,8 @@ app.add_middleware(
 
 
 class PipelineEngine(NamedTuple):
+    """Collection of pipelines for different models"""
+
     TAF: CodePredictionPipeline
 
     def __getitem__(self, key: Any) -> CodePredictionPipeline:
