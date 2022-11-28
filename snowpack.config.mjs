@@ -1,8 +1,8 @@
 /** @type {import("snowpack").SnowpackUserConfig } */
 export default {
     mount: {
+      client :  { url: '/dist' },
       public: { url: '/', static: true },
-      client: { url: '/dist' },
     },
     plugins: [
       '@snowpack/plugin-react-refresh',
@@ -17,7 +17,8 @@ export default {
     ],
     exclude: [
       '**/node_modules/**/*',
-      "server/**/*",
+      "src/server/**/*",
+      "src/model/**/*",
     ],
     env: {
       API_URL: 'api.google.com',

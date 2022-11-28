@@ -1,22 +1,14 @@
 import os
 import re
-
-from enum import Enum
+import enum
 from pathlib import Path
-from typing import TypeVar, ParamSpec
-
-from transformers import AddedToken
 from typing import Literal
 
 import torch
-from transformers import GPT2LMHeadModel, GPT2Config
+from transformers import AddedToken
 
 from . import __version__ as VERSION
-
-from .typing import StrPath, ModelPath, DatasetPath
-
-P = ParamSpec("P")
-R = TypeVar("R")
+from .typing import ModelPath, DatasetPath
 
 __all__ = [
     "SpecialTokens",
@@ -93,31 +85,16 @@ def get_model_name(
     return f"{base_model}-{dataset_name}-{version}"
 
 
-def get_language_model(
-    base_model: StrPath,
-    config: GPT2Config | None = None,
-    verbose: bool = False,
-    device: torch.device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu", index=0
-    ),
-) -> GPT2LMHeadModel:
-
-    model = GPT2LMHeadModel.from_pretrained(
-        base_model,
-        config=config,
-    )
-    # should always be in eval mode
-    assert isinstance(model, GPT2LMHeadModel)
-    if verbose:
-        print(model.config)
-    return model.to(device)
-
-
-class TokenEnum(str, Enum):
-    value: AddedToken
-
+class TokenEnum(str, enum.Enum):
     def __str__(self) -> str:
         return str(self.value)
+
+    def escape(self) -> str:
+        return re.escape(str(self.value))
+
+    @property
+    def compile(self) -> re.Pattern[str]:
+        return re.compile(self.escape())
 
     @classmethod
     def to_dict(cls) -> dict[str, AddedToken]:
@@ -129,12 +106,6 @@ class TokenEnum(str, Enum):
         if tokens:
             special_tokens["additional_special_tokens"] = list(tokens)  # type: ignore
         return special_tokens
-
-    def escape(self) -> str:
-        return re.escape(str(self))
-
-    def compile(self) -> re.Pattern[str]:
-        return re.compile(self.escape())
 
 
 class SpecialTokens(TokenEnum):

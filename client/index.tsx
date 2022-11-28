@@ -1,12 +1,12 @@
-import React from 'react';
-import ReactDOM from 'react-dom';
-import FITE from './fite';
+import React from "react";
+import ReactDOM from "react-dom";
+import FITE from "./fite";
 
 ReactDOM.render(
   <React.StrictMode>
-    <FITE />
+    <FITE apiUrl={"http://localhost:8000/generate/TAF/GREEDY"} />
   </React.StrictMode>,
-  document.getElementById('root')
+  document.getElementById("root")
 );
 
 // Hot Module Replacement (HMR) - Remove this snippet to remove HMR.

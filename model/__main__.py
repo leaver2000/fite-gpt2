@@ -1,12 +1,6 @@
-"""
-
-
-
-"""
 import re
 import json
 from typing import Iterable, NamedTuple
-
 
 import torch
 from transformers import (
@@ -21,30 +15,27 @@ from transformers import (
 
 from datasets.dataset_dict import DatasetDict
 
-from . import evaluate
-from ._dataset_builder import get_dataset_dict
-from ._pipeline import CodePredictionPipeline, HyperParameterStrategy, HyperParameters
-
+from . import build, evaluate
 from .util import (
     SpecialTokens,
     get_paths,
     get_model_name,
-    get_language_model,
     VERSION,
     MAX_LENGTH,
     BATCH_SIZE,
     DEFAULT_DEVICE,
     JSONL_FILE_MAP,
 )
-
 from .typing import GPT2TokenizerType
+
+from api.pipeline import CodePredictionPipeline, HyperParameterStrategy, HyperParameters
 
 
 # DONT CHANGE
 FRAMEWORK = "pt"
 BASE_MODEL_NAME = "gpt2"
-# the dataset name should be mapped to a jsonl file in the store/data
 DATASET_NAME = "taf"
+# the dataset name should be mapped to a jsonl file in the store/data
 
 if DATASET_NAME not in JSONL_FILE_MAP:
     raise OSError(
@@ -83,34 +74,29 @@ def fine_tune_tokenizer() -> None:
 
 def fine_tune_model(tokenizer: GPT2TokenizerType) -> None:
     torch.cuda.empty_cache()
-    model = get_language_model(
+    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(
         BASE_MODEL_NAME,
         # GPT2Config -> https://huggingface.co/transformers/v3.5.1/model_doc/gpt2.html#gpt2config
         config=GPT2Config(
             activation_function="gelu_new",
             layer_norm_eps=1e-05,
         ),
-    )
+    ).to(  # type: ignore
+        DEFAULT_DEVICE
+    )  # type: ignore
     # resize the embedding layer to match the new vocabulary size
     model.resize_token_embeddings(len(tokenizer))
 
     # if dataset does not exist, create it
     if not DATASET_PATH.exists():
         print("***** Dataset not found, creating dataset... *****")
-        (
-            get_dataset_dict(JSONL_FILE)
-            .map(
-                lambda x: tokenizer(x["prompt"], truncation=True, padding=True),
-                batch_size=BATCH_SIZE,
-                batched=True,
-            )
-            .map(
-                lambda x: tokenizer(x["completion"], truncation=True, padding=True),
-                batch_size=BATCH_SIZE,
-                batched=True,
-            )
-            .save_to_disk(DATASET_PATH)  # type: ignore
+        build.dataset_dict(
+            JSONL_FILE,
+            tokenizer,
+            DATASET_PATH,
+            BATCH_SIZE,
         )
+
     print("***** Loading dataset... *****")
     tokenized_ds = DatasetDict.load_from_disk(DATASET_PATH)  # type: ignore
     # ###  Trainer Setup ###
@@ -167,6 +153,7 @@ def fine_tune_model(tokenizer: GPT2TokenizerType) -> None:
     trainer.train()
     # save model
     model.save_pretrained(MODEL_PATH)  # type: ignore
+    model.push_to_hub(MODEL_NAME)  # type: ignore
 
 
 def handle_prediction(
