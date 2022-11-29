@@ -78,10 +78,6 @@ class DecoderKWARGS(TypedDict):
 
 
 class HyperParameters(TypedDict, total=False):
-    # max_length: int | None = None, min_length: int | None = None,
-    # do_sample: bool | None = None,
-    # early_stopping: bool | None = None,
-    # num_beams: int | None = None,
     do_sample: bool
     num_beams: int
     num_beam_groups: int
@@ -108,29 +104,24 @@ _BASE_SAMPLE = HyperParameters(
     do_sample=True,
     top_k=0,
     num_beams=1,
-    # num_return_sequences=5,
 )
 
 
-class HyperParameterStrategy(dict, enum.Enum):
+class _StrategyBase(dict, enum.Enum):
     def __str__(self) -> str:
         return self.name
 
     value: HyperParameters
-    GREEDY = HyperParameters(
-        do_sample=False,
-        num_beams=1,
-    )
+
+
+class HyperParameterStrategy(_StrategyBase):
+    GREEDY = HyperParameters(do_sample=False, num_beams=1)
     """
     https://huggingface.co/blog/how-to-generate#greedy-search
 
     Greedy search simply selects the word with the highest probability as its next word
     """
-    BEAM_SEARCH = HyperParameters(
-        do_sample=False,
-        num_beams=5,
-        early_stopping=True,
-    )
+    BEAM_SEARCH = HyperParameters(do_sample=False, num_beams=5, early_stopping=True)
     """
     https://huggingface.co/blog/how-to-generate#beam-search
 
@@ -173,6 +164,7 @@ class HyperParameterStrategy(dict, enum.Enum):
     TOP_K50_T125 = TOP_K50 | TEMP_125
     TOP_K150_T150 = TOP_K50 | TEMP_150
     TOP_K175_T175 = TOP_K50 | TEMP_175
+
     # --- Top-p (nucleus) sampling ---
     #  https://huggingface.co/blog/how-to-generate#top-p-nucleus-sampling
     # Instead of sampling only from the most likely K words,
@@ -191,10 +183,8 @@ class HyperParameterStrategy(dict, enum.Enum):
     TOP_P92_T125 = TOP_P92 | TEMP_125
     TOP_P92_T150 = TOP_P92 | TEMP_150
     TOP_P92_T175 = TOP_P92 | TEMP_175
-    # TOP_P125 = TOP_P | TEMP_125
-    # TOP_P150 = TOP_P | TEMP_150
-    # TOP_P175 = TOP_P | TEMP_175
-    # # ### Top-p (nucleus) sampling
+
+    # --- Top-K + Top-p (nucleus) sampling ---
     TOP_KP = TOP_K50 | TOP_P92
     TOP_KP_T125 = TOP_KP | TEMP_125
     TOP_KP_T150 = TOP_KP | TEMP_150
@@ -202,7 +192,7 @@ class HyperParameterStrategy(dict, enum.Enum):
 
 
 HyperParameterStrategys: TypeAlias = StrEnum(
-    "HyperParameterStrategys", HyperParameterStrategy._member_names_
+    "HyperParameterStrategys", HyperParameterStrategy._member_names_  # type: ignore
 )
 
 
