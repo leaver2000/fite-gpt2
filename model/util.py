@@ -1,128 +1,219 @@
 import os
 import re
 import enum
+import dataclasses
 from pathlib import Path
-from typing import NamedTuple, TypeAlias
 
+from typing import Iterable, Generic, Union
+from typing_extensions import TypeVarTuple, Unpack
+
+import toml
 import torch
 from transformers import AddedToken
 
+from api.pipeline import HyperParameterStrategy, HyperParameters
+
+from .typing import (
+    PyProjectTOML, Model,
+    ModelName, Version, RawTextFile, JSONLinesFile, DatasetDictPath, TokenizerPath, ModelPath,
+    )
+
+
+Ts = TypeVarTuple("Ts")
+
 
 __all__ = [
+    "FileSystem",
+    "FileSystemDirectory",
+    "ResultRecord",
+    "FITEConfig",
     "SpecialTokens",
-    "RegexPatterns",
-    # "get_model_name",
-    # Path constants and functions
-    "ROOT_DATASET_PATH",
-    "ROOT_MODEL_PATH",
-    "MAX_LENGTH",
-    "BATCH_SIZE",
-    "get_file_system",
+    "ActionStr",
+    "CONSTANTS",
 ]
 # RUNTIME VARIABLES
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", 8))
-MAX_LENGTH = int(os.getenv("MAX_LENGTH", 256))
-STORE = Path.cwd() / os.getenv("STORE_PATH", "store")
-ROOT_MODEL_PATH = STORE / "models"
-ROOT_DATASET_PATH = STORE / "datasets"
-ROOT_TOKENIZER_PATH = STORE / "tokenizer"
-ROOT_DATA_PATH = STORE / "data"
 DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
 
 
-ModelName: TypeAlias = str
-RawTextFile: TypeAlias = Path
-JSONLinesFile: TypeAlias = Path
-DatasetPath: TypeAlias = Path
-TokenizerPath: TypeAlias = Path
-ModelPath: TypeAlias = Path
+class CONSTANTS(enum.IntEnum):
+    BATCH_SIZE = os.getenv("BATCH_SIZE", 8)
+    MAX_LENGTH = os.getenv("MAX_LENGTH", 256)
 
 
-class FileMap(NamedTuple):
-    name: ModelName
+# ModelName: TypeAlias = str
+# Version: TypeAlias = str
+# RawTextFile: TypeAlias = Path
+# JSONLinesFile: TypeAlias = Path
+# DatasetDictPath: TypeAlias = Path
+# TokenizerPath: TypeAlias = Path
+# ModelPath: TypeAlias = Path
+
+
+@dataclasses.dataclass
+class DataClassBase(Generic[Unpack[Ts]]):
+    def to_dict(self) -> dict[str, Union[Unpack[Ts]]]:
+        return dataclasses.asdict(self)
+
+
+@dataclasses.dataclass
+class FITEConfig(DataClassBase[list[Model]]):
+    models: list[Model]
+
+    @classmethod
+    def load(cls, path: Path):
+        config = PyProjectTOML.load(path)
+        models = config["project"]["models"]
+        return cls(models=models)
+
+    def get_model(self, key) -> Model:
+        for model in self.models:
+            if model["name"] == key:
+                return model
+        raise ValueError(f"Model {key} not found in config")
+
+
+@dataclasses.dataclass
+class FileSystem(
+    DataClassBase[
+        str,
+        Model,
+        Version,
+        ModelName,
+        RawTextFile,
+        JSONLinesFile,
+        DatasetDictPath,
+        TokenizerPath,
+        ModelPath,
+    ]
+):
+    base_model: str
+    name: str
+    version: Version
+    model_name: ModelName
+    # base_model: str
+    # name: str
+    # version: Version
+    # model_name: ModelName
     raw_text: RawTextFile
-    jsonl: JSONLinesFile
-    dataset: DatasetPath
+    json_lines: JSONLinesFile
+    dataset_dict: DatasetDictPath
     tokenizer: TokenizerPath
     model: ModelPath
 
+    __fite_config = FITEConfig.load(
+        Path(os.getenv("FITE_CONFIG", Path.cwd() / "pyproject.toml"))
+    )
 
-def get_file_system(base_model: str, version: str) -> dict[str, FileMap]:
-    fs = {}
-    dataset_names = {
-        file.stem.rstrip("-training-data") for file in ROOT_DATA_PATH.iterdir()
-    }
-    for name in dataset_names:
-        model_name = f"{base_model}-{name}-{version}"
-        fs[name] = FileMap(
-            name=model_name,
-            raw_text=ROOT_DATA_PATH / f"{name}-training-data.txt",
-            jsonl=ROOT_DATA_PATH / f"{name}-training-data.jsonl",
-            dataset=ROOT_DATASET_PATH / model_name,
-            tokenizer=ROOT_TOKENIZER_PATH / model_name,
-            model=ROOT_MODEL_PATH / model_name,
-        )
-    return fs
+    def to_dict(self):
+        return dataclasses.asdict(self)
+
+    @property
+    def config(self) -> Model:
+        return self.__fite_config.get_model(self.name)
 
 
-"""a mapping of FileMaps to the various paths used in the project"""
+@dataclasses.dataclass
+class FileSystemDirectory(DataClassBase[str, Path]):
+    """the file system directory maps the dataset name to the file system paths
 
-TOKEN_PATTERN = re.compile(
-    r"(?<=\s\d{3})(?=\d{2,3})|(?=KT)|(?=G\d{2}KT)|(?=G\d{3}KT)|(?<=FEW|SCT|BKN|OVC)|(?<=(FEW|SCT|BKN|OVC)\d{3})(?=CB)"
-)
+    the root paths are
+    - store/data -> raw text files and json lines files
+    - store/datasets -> dataset dictionary files
+    - store/models -> model files
+    - store/tokenizer -> tokenizer files
 
+    the file system requires the existence of a raw text file or a jsonl file
+    formatted as follows:
+    - raw text file: store/data/{name}-training-data.txt
+    - jsonl file: store/data/{name}-training-data.jsonl
 
-class RegexPatterns:
-    # split-winds: 23015G25KT -> 230 15 G 25 KT
-    WIND_GUST = r"""
-    (?<=\s(\d{3}|VRB))(?=\d{2,3}(KT|G\d{2,3}KT)) # wind direction and speed
-    |(?=G\d{2,3}KT\s) # before Gust
-    |(?<=G)(?=\d{2,3}KT\s) # after Gust
-    |(?=KT\s) # before KT
+    the file system will create the following files:
+    - dataset dictionary: store/datasets/{base_model}-{name}-{version}
+    - tokenizer: store/tokenizer/{base_model}-{name}-{version}
+    - model: store/models/{base_model}-{name}-{version}
+
     """
-    # split-clouds: SCT250 -> SCT 250MODEL_PATH
-    CLOUD_COVER = r"""
-    (?<=FEW|SCT|BKN|OVC)(?=\d{3}) # after cloud cover
-    |(?<=(FEW|SCT|BKN|OVC)\d{3})(?=CB) # before CB
-    """
-    TOKEN_PATTERN = re.compile(r"|".join([WIND_GUST, CLOUD_COVER]), re.VERBOSE)
-    TEMPERATURE_GROUP = r"\sTX(M)?\d{2}\/\d{4}Z\sTN(M)?\d{2}\/\d{4}Z"
-    sub = TOKEN_PATTERN.sub
+
+    base_model: str
+    version: str
+    store_path: Path = Path.cwd() / os.getenv("STORE_PATH", "store")
+
+    def __post_init__(self):
+        self.data_path = self.store_path / "data"
+
+        dataset_names = {
+            file.stem.rstrip("-training-data") for file in self.data_path.iterdir()
+        }
+        self.__fsd = dict(self._generate_file_map(dataset_names))
+        """the file system directory maps the dataset name to the file system paths"""
+
+    def _generate_file_map(
+        self, dataset_names: set[str]
+    ) -> Iterable[tuple[str, FileSystem]]:
+        """generate the file system paths for each dataset name"""
+        # unpack class attributes
+        base_model, version = self.base_model, self.version
+        data_path, store_path = self.data_path, self.store_path
+        # iterate over the dataset names, to generate the a FileSystem Mapping
+        for name in dataset_names:
+            model_name = f"{base_model}-{name}-{version}"
+            yield name, FileSystem(
+                name=name,
+                version=version,
+                base_model=base_model,
+                model_name=model_name,
+                # the raw text and jsonl files are store in the data directory
+                raw_text=data_path / f"{name}-training-data.txt",
+                json_lines=data_path / f"{name}-training-data.jsonl",
+                # the dataset dictionary, tokenizer, and model files are stored in the
+                # respective directories behind the model name
+                model=store_path / model_name / "model",
+                tokenizer=store_path / model_name / "tokenizer",
+                dataset_dict=store_path / model_name / "dataset",
+            )
+
+    def get(self, name: str) -> FileSystem:
+        fs = self.__fsd.get(name)
+        if fs is None:
+            raise OSError(
+                f"the dataset {name} does not exist in the file system directory"
+            )
+
+        return fs
 
 
-def _path_is_empty(path: Path) -> bool:
-    return path.exists() and not os.listdir(path)
+@dataclasses.dataclass
+class ResultRecord(
+    DataClassBase[str, list[str], float, HyperParameters | HyperParameterStrategy]
+):
+    """ResultOutput is a named tuple that contains the output of the model."""
+
+    model: str
+    prompt_text: str
+    generated_text: list[str]
+    score: float
+    strategy: str
+    hyper_parameters: HyperParameterStrategy | HyperParameters
 
 
-# def get_paths(model_name: str) -> tuple[ModelPath, Path, DatasetPath]:
-#     paths = (
-#         ROOT_MODEL_PATH / model_name,
-#         ROOT_TOKENIZER_PATH / model_name,
-#         ROOT_DATASET_PATH / model_name,
-#     )
-
-#     for path in paths:
-#         if path.exists() and _path_is_empty(path):
-#             # remove the path if it exists and is empty
-#             path.rmdir()
-#     return paths
-
-
-# def get_model_name(base_model: str, dataset_name: str, version: str = VERSION) -> str:
-#     return f"{base_model}-{dataset_name}-{version}"
-
-
-class TokenEnum(str, enum.Enum):
+class StrEnum(str, enum.Enum):
     def __str__(self) -> str:
-        return str(self.value)
+        return self.value
 
+    def _generate_next_value_(name: str, *_: tuple) -> str:
+        return name
+
+
+class RegexEnum(StrEnum):
     def escape(self) -> str:
-        return re.escape(str(self.value))
+        return re.escape(str(self))
 
     @property
     def compile(self) -> re.Pattern[str]:
         return re.compile(self.escape())
 
+
+class TokenEnum(RegexEnum):
     @classmethod
     def to_dict(cls) -> dict[str, AddedToken]:
         return {k: v.value for k, v in cls._member_map_.items()}
@@ -161,5 +252,45 @@ class SpecialTokens(TokenEnum):
     unk_token = "<|unk|>"
 
 
-def dedent_plus(text: str) -> str:
-    return "\n".join(t.strip() for t in text.split("\n"))
+class ActionStr(StrEnum):
+    """ParserActions are the actions that the parser can take.
+    >>> ParserActions.HELP
+    'help'
+    >>> ParserActions.STORE
+    'store'
+    """
+
+    STORE = "store"
+    CONST = "store_const"
+    TRUE = "store_false"
+    FALSE = "store_true"
+    APPEND = "append"
+    APPEND_CONST = "append_const"
+    COUNT = "count"
+    HELP = "help"
+    VERSION = "version"
+
+
+class TomlEncoder(toml.TomlEncoder):
+    """TomlEncoder is a custom toml encoder to handle lists
+    specifically how the toml.TomlEncoder handles lists:
+    instead of:
+    >>> toml.dumps({"a": ["1", "2", "3"]})
+    'a = ["1", "2", "3"]'
+    it will be:
+    >>> toml.dumps({"a": ["1", "2", "3"]})
+    'a = [
+        "1",
+        "2",
+        "3",
+    ]'
+    """
+
+    def dump_list(self, value_list: list) -> str:
+        result = "["
+        if value_list:
+            result += "\n"
+            for u in value_list:
+                result += f"\t{self.dump_value(u)},\n"
+        result += "]"
+        return result
