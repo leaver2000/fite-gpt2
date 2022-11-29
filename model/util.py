@@ -25,10 +25,6 @@ from .typing import (
     ModelPath,
 )
 
-
-Ts = TypeVarTuple("Ts")
-
-
 __all__ = [
     "FileSystem",
     "FileSystemDirectory",
@@ -38,6 +34,9 @@ __all__ = [
     "ActionStr",
     "CONSTANTS",
 ]
+
+Ts = TypeVarTuple("Ts")
+
 # RUNTIME VARIABLES
 DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
 
@@ -45,15 +44,6 @@ DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", in
 class CONSTANTS(enum.IntEnum):
     BATCH_SIZE = os.getenv("BATCH_SIZE", 8)
     MAX_LENGTH = os.getenv("MAX_LENGTH", 256)
-
-
-# ModelName: TypeAlias = str
-# Version: TypeAlias = str
-# RawTextFile: TypeAlias = Path
-# JSONLinesFile: TypeAlias = Path
-# DatasetDictPath: TypeAlias = Path
-# TokenizerPath: TypeAlias = Path
-# ModelPath: TypeAlias = Path
 
 
 @dataclasses.dataclass
