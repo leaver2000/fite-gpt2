@@ -3,10 +3,9 @@ import re
 import enum
 import dataclasses
 from pathlib import Path
-
 from typing import Iterable, Generic, Union
-from typing_extensions import TypeVarTuple, Unpack
 
+from typing_extensions import TypeVarTuple, Unpack
 import toml
 import torch
 from transformers import AddedToken
@@ -36,8 +35,6 @@ __all__ = [
 ]
 
 Ts = TypeVarTuple("Ts")
-
-# RUNTIME VARIABLES
 DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
 
 
@@ -87,10 +84,6 @@ class FileSystem(
     name: str
     version: Version
     model_name: ModelName
-    # base_model: str
-    # name: str
-    # version: Version
-    # model_name: ModelName
     raw_text: RawTextFile
     json_lines: JSONLinesFile
     dataset_dict: DatasetDictPath
