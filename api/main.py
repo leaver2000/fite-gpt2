@@ -1,4 +1,3 @@
-import os
 import random
 import datetime
 from pathlib import Path
@@ -17,15 +16,29 @@ from .pipeline import (
     HyperParameterStrategys,
 )
 
+__all__ = [
+    "Engine",
+]
 VERSION = "0.1.0"
 
-MODEL_PATH = Path(os.getenv("FITE_MODEL_PATH", "store/models"))
-if not MODEL_PATH.exists():
-    raise OSError(f"Model path {MODEL_PATH} does not exist")
 
-TOKENIZER_PATH = Path(os.getenv("FITE_TOKENIZER_PATH", "store/tokenizer"))
-if not TOKENIZER_PATH.exists():
-    raise OSError(f"Tokenizer path {TOKENIZER_PATH} does not exist")
+def split_version(version: str):
+    """Map version to major, minor, patch"""
+    return tuple(map(int, version.split(".")))
+
+
+def get_latests_version(base_model: str, dataset_name: str):
+    """Get the latest version of the model"""
+    store = Path.cwd() / "store"
+    fs = {
+        split_version(folder.name.split("-")[-1]): folder
+        for folder in store.glob(f"{base_model}-{dataset_name}-*")
+    }
+    return fs[max(fs.keys())]
+
+
+TAF_PATH = get_latests_version("gpt2", "taf")
+
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
 
@@ -60,8 +73,8 @@ PipelineEngineStrategys: TypeAlias = StrEnum(
 
 Engine = PipelineEngine(
     TAF=CodePredictionPipeline(
-        model=GPT2LMHeadModel.from_pretrained(MODEL_PATH / f"gpt2-taf-{VERSION}"),  # type: ignore
-        tokenizer=GPT2TokenizerFast.from_pretrained(TOKENIZER_PATH / f"gpt2-taf-{VERSION}"),  # type: ignore
+        model=GPT2LMHeadModel.from_pretrained(TAF_PATH / "model"),  # type: ignore
+        tokenizer=GPT2TokenizerFast.from_pretrained(TAF_PATH / "tokenizer"),  # type: ignore
         device=DEVICE,
         max_length=256,
         num_return_sequences=1,
