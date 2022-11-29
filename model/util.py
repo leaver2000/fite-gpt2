@@ -14,9 +14,16 @@ from transformers import AddedToken
 from api.pipeline import HyperParameterStrategy, HyperParameters
 
 from .typing import (
-    PyProjectTOML, Model,
-    ModelName, Version, RawTextFile, JSONLinesFile, DatasetDictPath, TokenizerPath, ModelPath,
-    )
+    PyProjectTOML,
+    Model,
+    ModelName,
+    Version,
+    RawTextFile,
+    JSONLinesFile,
+    DatasetDictPath,
+    TokenizerPath,
+    ModelPath,
+)
 
 
 Ts = TypeVarTuple("Ts")
