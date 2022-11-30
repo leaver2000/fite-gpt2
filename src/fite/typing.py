@@ -99,7 +99,6 @@ class PyProjectTOML(_PyProject):
             toml.dump(self, f, encoder=TomlEncoder())
 
 
-
 class TomlEncoder(toml.TomlEncoder):
     """TomlEncoder is a custom toml encoder to handle lists
     specifically how the toml.TomlEncoder handles lists:

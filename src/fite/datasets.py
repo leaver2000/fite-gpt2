@@ -73,8 +73,6 @@ class Dataset(ArrowDataset):
         )
 
 
-
-
 @dataclasses.dataclass
 class TextFile:
     """A class to handle raw text files"""
