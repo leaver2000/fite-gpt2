@@ -20,7 +20,7 @@ from transformers import AddedToken
 
 from .enum import RegexEnum, StrEnum
 from .pipeline import HyperParameters, HyperParameterStrategy
-from .typing import ModelConfig 
+from .typing import ModelConfig
 from .typing import (
     DatasetDictPath,
     JSONLinesFile,
@@ -51,13 +51,13 @@ class CONSTANTS(enum.IntEnum):
 
 
 @dataclasses.dataclass
-class DataClassBase(Generic[Unpack[Ts]]):
+class DataclassBase(Generic[Unpack[Ts]]):
     def to_dict(self) -> dict[str, Union[Unpack[Ts]]]:
         return dataclasses.asdict(self)
 
 
 @dataclasses.dataclass
-class FileSystem(DataClassBase[str, Path, ModelConfig]):
+class FileSystem(DataclassBase[str, Path, ModelConfig]):
     base_model: str
     name: str
     version: str
@@ -75,7 +75,7 @@ class FileSystem(DataClassBase[str, Path, ModelConfig]):
 
 
 @dataclasses.dataclass
-class FileSystemDirectory(DataClassBase[str, Path]):
+class FileSystemDirectory(DataclassBase[str, Path]):
     """the file system directory maps the dataset name to the file system paths
 
     the root paths are
@@ -148,7 +148,7 @@ class FileSystemDirectory(DataClassBase[str, Path]):
 
 @dataclasses.dataclass
 class ResultRecord(
-    DataClassBase[str, list[str], float, HyperParameters | HyperParameterStrategy]
+    DataclassBase[str, list[str], float, HyperParameters | HyperParameterStrategy]
 ):
     """ResultOutput is a named tuple that contains the output of the model."""
 
