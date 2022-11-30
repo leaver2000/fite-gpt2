@@ -1,13 +1,45 @@
 # Forecast integrated TAF environment (FITE)
 
-
+## description
 
 *GPT-2 is a large transformer-based language model with 1.5 billion parameters, trained on a dataset[1] of 8 million web pages. GPT-2 is trained with a simple objective: predict the next word, given all of the previous words within some text. The diversity of the dataset causes this simple goal to contain naturally occurring demonstrations of many tasks across diverse domains. GPT-2 is a direct scale-up of GPT, with more than 10X the parameters and trained on more than 10X the amount of data.*
+
+The training scripts run based on the pyproject.toml config file
+
+in you pyproject.toml 
+
+``` toml
+[tool.fite]
+root-path = "store/" # the root path to the models and data 
+
+[[tool.fite.models]]
+model-name = "gpt2-taf-base1" # store/gpt2-taf-base1/[training-data.txt | training-data.json]
+
+```
+
 > ✨ Bootstrapped with Create Snowpack App (CSA).
 
-## Model: Training
+## install
+
 ``` bash
-python -m model train
+git clone ...
+python -m venv ~/venv
+source ~/venv/bin/activate
+pip install .
+Processing /home/leaver2000/fite-gpt2
+  Installing build dependencies ... done
+  Getting requirements to build wheel ... done
+  Preparing metadata (pyproject.toml) ... done
+  ...
+```
+
+## train the model
+
+```bash
+python -m fite.train --verbose taf
+***** Training model: gpt2-taf-base2 *****
+***** From the base model: gpt2 *****
+***** Using dataset: store/gpt2-taf-base2/dataset *****
 ***** Tokenizer not found, creating tokenizer... *****
 ***** Model not found, creating model... *****
 ***** Dataset not found, creating dataset... *****
@@ -16,7 +48,12 @@ python -m model train
 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2433/2433 [00:07<00:00, 340.06ba/s]
 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 609/609 [00:01<00:00, 350.89ba/s]
 ***** Loading dataset... *****
+...
+
+[['TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS', 'TEMPO 0200/0206 5000 -SHRA OVC015', 'BECMG 0207/0208 VRB06KT 0800 -SHRA BR OVC006 QNH2990INS', 'BECMG 0211/0212 VRB06KT 1600 BR OVC006 QNH2990INS TX20/0120Z TN11/0212Z'], ['TAF KGTB 251700Z 2517/2623 26012G20KT 9999 BKN030 QNH2993INS', 'BECMG 2601/2602 19006KT 8000 -SHRA BKN030 QNH2993INS', 'BECMG 2603/2604 18006KT 6000 -SHRA BKN030 QNH2993INS TX21/2519Z TN13/2610Z'], ['TAF KGTB 251700Z 2517/2623 26012G20KT 9999 OVC008 QNH2970INS', 'BECMG 2519/2520 27009KT 9999 SCT009 OVC015 QNH2976INS', 'BECMG 2610/2611 VRB06KT 9999 BKN015 OVC025 QNH2991INS', 'BECMG 2613/2614 29009KT 9999 SCT025 BKN040 QNH2994INS', 'BECMG 2616/2617 31010G15KT 9999 FEW050 SCT200 QNH3010INS TX19/2519Z TN11/2610Z'], ['TAF KMTC 252000Z 2520/2702 29012G20KT 9999 SKC QNH3030INS', 'BECMG 2601/2602 19006KT 9999 SKC QNH3030INS TXM06/2619Z TNM12/2610Z'], ['TAF PASY 251400Z 2514/2620 11006KT 9999 FEW030 FEW045 SCT100 QNH3002INS', 'BECMG 2519/2520 12006KT 9999 SCT030 BKN200 QNH3010INS', 'BECMG 2601/2602 19006KT 8000 -SHRA OVC020 510204 QNH3010INS', 'BECMG 2603/2604 18006KT 6000 -DZ BR OVC006 QNH3012INS TX20/2519Z TN13/2610Z']]
 ```
+
+
 The model was trained on ~90-100 TAFs from each of the following locations:
 
 ``` bash

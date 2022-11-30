@@ -53,12 +53,15 @@ class Project(TypedDict):
     long_description: str
     long_description_content_type: str
     url: str
-    config: ProjectConfig
+
+
+class Tools(TypedDict):
+    fite: ProjectConfig
 
 
 _PyProject = TypedDict(
     "_PyProject",
-    {"build-system": TOMLDict, "project": Project, "tool": TOMLDict},
+    {"build-system": TOMLDict, "project": Project, "tool": Tools},
 )
 
 

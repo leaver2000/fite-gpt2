@@ -15,10 +15,10 @@ else:
     from typing_extensions import TypeVarTuple, Unpack
 
 import torch
-from transformers import AddedToken
+from transformers import AddedToken, GPT2LMHeadModel, GPT2TokenizerFast
 
 from .enum import RegexEnum, StrEnum
-from .pipeline import HyperParameters, HyperParameterStrategy
+from .pipeline import CodePredictionPipeline, HyperParameters, HyperParameterStrategy
 from .typing import (
     DatasetDictPath,
     JSONLinesFile,
@@ -61,16 +61,32 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
     name: str
     version: str
 
-    raw_text: RawTextFile
-    json_lines: JSONLinesFile
-    dataset_dict: DatasetDictPath
-    tokenizer: TokenizerPath
-    model: ModelPath
+    raw_text_file: RawTextFile
+    json_lines_file: JSONLinesFile
+    dataset_dict_path: DatasetDictPath
+    tokenizer_path: TokenizerPath
+    model_path: ModelPath
     config: ModelConfig = attrs.field(on_setattr=attrs.setters.frozen)
 
     @property
     def model_name(self) -> str:
         return f"{self.base_model}-{self.name}-{self.version}"
+
+    def get_model(self, **kwargs) -> GPT2LMHeadModel:
+        return GPT2LMHeadModel.from_pretrained(self.model_path, **kwargs).to(DEFAULT_DEVICE)  # type: ignore
+
+    def get_tokenizer(self, **kwargs) -> GPT2TokenizerFast:
+        return GPT2TokenizerFast.from_pretrained(self.tokenizer_path, **kwargs)
+
+    def get_pipeline(self, **kwargs) -> CodePredictionPipeline:
+        return CodePredictionPipeline(
+            model=self.get_model(),
+            tokenizer=self.get_tokenizer(),
+            device=DEFAULT_DEVICE,
+            max_length=CONSTANTS.MAX_LENGTH,
+            num_return_sequences=1,
+            **kwargs,
+        )
 
 
 @dataclasses.dataclass
@@ -95,8 +111,6 @@ class FileSystemDirectory(DataclassBase[str, Path]):
 
     """
 
-    base_model: str
-
     version: Version = "base"
     model_run: Optional[datetime] = dataclasses.field(repr=False, default=None)
     py_project: PyProjectTOML = dataclasses.field(
@@ -104,7 +118,7 @@ class FileSystemDirectory(DataclassBase[str, Path]):
     )
 
     def __post_init__(self):
-        config = self.py_project["project"]["config"]
+        config = self.py_project["tool"]["fite"]
         root_path = Path(config["root-path"])
 
         if self.model_run:
@@ -128,11 +142,11 @@ class FileSystemDirectory(DataclassBase[str, Path]):
                 name=name,
                 base_model=base_model,
                 version=version,
-                raw_text=model_root / "training-data.txt",
-                json_lines=model_root / "training-data.jsonl",
-                dataset_dict=model_root / "dataset",
-                tokenizer=model_root / "tokenizer",
-                model=model_root / "model",
+                raw_text_file=model_root / "training-data.txt",
+                json_lines_file=model_root / "training-data.jsonl",
+                dataset_dict_path=model_root / "dataset",
+                tokenizer_path=model_root / "tokenizer",
+                model_path=model_root / "model",
             )
 
     def get(self, name: str) -> FileSystem:
@@ -143,6 +157,15 @@ class FileSystemDirectory(DataclassBase[str, Path]):
             )
 
         return fs
+
+    def get_pipeline(self, name: str, **kwargs) -> CodePredictionPipeline:
+        return self.get(name).get_pipeline(**kwargs)
+
+    def list_models(self) -> list[FileSystem]:
+        return list(self.__fsd.values())
+
+    def list_model_names(self) -> list[str]:
+        return list(self.__fsd.keys())
 
 
 @dataclasses.dataclass

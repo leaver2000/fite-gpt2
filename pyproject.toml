@@ -3,12 +3,6 @@
 requires = [
     "setuptools>=58.2.0", 
     "wheel",
-    "numpy==1.23.5",
-    "pandas==1.5.1",
-    "torch==1.13.0",
-    "pyarrow==10.0.0",
-    "transformers==4.24.0",
-    "tokenizers==0.13.2",
 ]   
 
 build-backend = "setuptools.build_meta"
@@ -17,8 +11,22 @@ build-backend = "setuptools.build_meta"
 name = "fite"
 version = "0.0.1"
 description = "Forecaster Intergrated TAF Environment; a Python package for autocompletion of Terminal Aerodrome Forecasts."
+authors = [
+    {name = "Jason Leaver", email = "jason.leaver@us.af.mil"},
+]
+license = {file = 'LICENSE'}
 requires-python = ">=3.10"
-license = "MIT"
+dependencies = [
+    "numpy==1.23.5",
+    "pandas==1.5.1",
+    "torch==1.13.0",
+    "datasets==2.7.0",
+    "tokenizers==0.13.2",
+    "transformers==4.24.0",
+    "pyarrow==10.0.0",
+    "fastapi==0.87.0",
+    "toml==0.10.2",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -31,11 +39,11 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Topic :: Utilities",
 ]
-[project.config]
+[tool.fite]
 root-path = "store/"
 
-[[project.config.models]]
-model-name = "gpt2-taf-base2"
+[[tool.fite.models]]
+model-name = "gpt2-taf-base1"
 description = "A GPT-2 model trained on TAFs."
 additional-tokens = ["\u0120TAF", "\u0120BECMG", "\u0120TEMPO"]
 additional-special-tokens = ["\u0120LAST", "\u0120NO", "\u0120AMDS", "\u0120RMK", "\u0120COR"]
@@ -47,7 +55,7 @@ prompt-examples = [
     "TAF PASY 251400Z 2514/2620 11006KT 9999 FEW030 FEW045 SCT100 QNH3002INS\nBECMG 2519/2520",
 ]
 
-[[project.config.models]]
+[[tool.fite.models]]
 model-name = "gpt2-metar-base1"
 description = "A GPT-2 model trained on METARs."
 additional-tokens = ["\u0120TAF", "\u0120BECMG", "\u0120TEMPO"]
