@@ -1,7 +1,7 @@
 import enum
 import re
 
-__all__ = ["StrEnum", "DictEnum"]
+__all__ = ["StrEnum", "RegexEnum", "DictEnum"]
 
 
 class StrEnum(str, enum.Enum):
