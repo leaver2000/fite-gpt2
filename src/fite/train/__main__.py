@@ -1,6 +1,6 @@
 import json
 from typing import Literal
-
+import torch
 from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 from .. import __version__ as VERSION
@@ -112,6 +112,7 @@ def main(fs: FileSystem) -> None:
         2.2. if the json lines file doest not exist, attempt to create it from a raw text file
     3. fine-tune the model
     """
+    torch.cuda.empty_cache()
     print(f"***** Training model: {fs.model_name} *****")
     print(f"***** From the base model: {fs.base_model} *****")
     print(f"***** Using dataset: {fs.dataset_dict_path} *****")
@@ -119,8 +120,12 @@ def main(fs: FileSystem) -> None:
     if not fs.tokenizer_path.exists():
         print("***** Tokenizer not found, creating tokenizer... *****")
         fine_tune.tokenizer(fs)
-
-    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(fs.tokenizer_path)
+    # 1.1 -> load the tokenizer from the filesystem
+    tokenizer = fs.get_tokenizer()
+    # the dataset will have to be encoded
+    # the encode function will be called on the dataset via the map method
+    # each call to encode will return a dictionary with kwargs that can be unpacked into
+    # the dataset constructor
     encoding_kwargs = {
         "batched": True,
         "batch_size": CONSTANTS.BATCH_SIZE,
@@ -155,6 +160,8 @@ def main(fs: FileSystem) -> None:
     # # load the model from the saved path
     model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
     model.resize_token_embeddings(len(tokenizer))
+    # model = fs.get_model().to(DEFAULT_DEVICE)
+    # model.to(DEFAULT_DEVICE).resize_token_embeddings(len(tokenizer))
     pipe = CodePredictionPipeline(
         model=model,
         tokenizer=tokenizer,
