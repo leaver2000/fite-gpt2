@@ -61,11 +61,11 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
     name: str
     version: str
 
-    raw_text: RawTextFile
-    json_lines: JSONLinesFile
-    dataset_dict: DatasetDictPath
-    tokenizer: TokenizerPath
-    model: ModelPath
+    raw_text_file: RawTextFile
+    json_lines_file: JSONLinesFile
+    dataset_dict_path: DatasetDictPath
+    tokenizer_path: TokenizerPath
+    model_path: ModelPath
     config: ModelConfig = attrs.field(on_setattr=attrs.setters.frozen)
 
     @property
@@ -73,10 +73,10 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
         return f"{self.base_model}-{self.name}-{self.version}"
 
     def get_model(self, **kwargs) -> GPT2LMHeadModel:
-        return GPT2LMHeadModel.from_pretrained(self.model, **kwargs).to(DEFAULT_DEVICE)  # type: ignore
+        return GPT2LMHeadModel.from_pretrained(self.model_path, **kwargs).to(DEFAULT_DEVICE)  # type: ignore
 
     def get_tokenizer(self, **kwargs) -> GPT2TokenizerFast:
-        return GPT2TokenizerFast.from_pretrained(self.tokenizer, **kwargs)
+        return GPT2TokenizerFast.from_pretrained(self.tokenizer_path, **kwargs)
 
     def get_pipeline(self, **kwargs) -> CodePredictionPipeline:
         return CodePredictionPipeline(
@@ -142,11 +142,11 @@ class FileSystemDirectory(DataclassBase[str, Path]):
                 name=name,
                 base_model=base_model,
                 version=version,
-                raw_text=model_root / "training-data.txt",
-                json_lines=model_root / "training-data.jsonl",
-                dataset_dict=model_root / "dataset",
-                tokenizer=model_root / "tokenizer",
-                model=model_root / "model",
+                raw_text_file=model_root / "training-data.txt",
+                json_lines_file=model_root / "training-data.jsonl",
+                dataset_dict_path=model_root / "dataset",
+                tokenizer_path=model_root / "tokenizer",
+                model_path=model_root / "model",
             )
 
     def get(self, name: str) -> FileSystem:
@@ -160,6 +160,12 @@ class FileSystemDirectory(DataclassBase[str, Path]):
 
     def get_pipeline(self, name: str, **kwargs) -> CodePredictionPipeline:
         return self.get(name).get_pipeline(**kwargs)
+
+    def list_models(self) -> list[FileSystem]:
+        return list(self.__fsd.values())
+
+    def list_model_names(self) -> list[str]:
+        return list(self.__fsd.keys())
 
 
 @dataclasses.dataclass

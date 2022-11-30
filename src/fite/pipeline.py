@@ -1,7 +1,7 @@
 import dataclasses
 import random
 import re
-from typing import Iterable, Optional, TypeAlias, TypedDict
+from typing import Iterable, Optional, TypeAlias, TypedDict, Union
 
 import torch
 from transformers import (
@@ -183,9 +183,8 @@ class HyperParameterStrategy(DictEnum):
     TOP_KP_T175 = TOP_KP | TEMP_175
 
 
-HyperParameterStrategys: TypeAlias = StrEnum(
-    "HyperParameterStrategys", HyperParameterStrategy._member_names_  # type: ignore
-)
+StrategysType: TypeAlias = StrEnum
+Strategys: TypeAlias = StrEnum("Strategys", HyperParameterStrategy._member_names_)
 
 
 class TokenIds(TypedDict):
@@ -278,10 +277,10 @@ class CodePredictionPipeline(TextGenerationPipeline):
         )
         return [strip_split(text.replace("\n", "")) for text in text_list]
 
-    def generate_forecast(
+    def generate(
         self,
         text: str | list[str],
-        strategy: HyperParameterStrategy | HyperParameterStrategys | str | None = None,
+        strategy: Union[Strategys, str, None] = None,
         padding: PaddingStrategy | bool = True,
         truncation: TruncationStrategy | bool = True,
         **kwargs: Unpack[HyperParameters],
@@ -301,7 +300,7 @@ class CodePredictionPipeline(TextGenerationPipeline):
 
         if not isinstance(strategy, HyperParameterStrategy):
             strategy = HyperParameterStrategy[
-                strategy if strategy else random.choice(list(HyperParameterStrategys))
+                strategy if strategy else random.choice(list(Strategys))
             ]  # type: ignore
 
         # BatchEncoding provides the token_ids and attention_mask

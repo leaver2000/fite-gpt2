@@ -53,7 +53,7 @@ def get_results(
     for strategy in [HyperParameterStrategy.GREEDY]:
         if VERBOSE:
             print(f"***** Running {strategy.name} strategy *****")
-        generated_text_list = pipe.generate_forecast(prompt_examples, strategy=strategy)
+        generated_text_list = pipe.generate(prompt_examples, strategy=strategy)
         for prompt_text, generated_text in zip(prompt_examples, generated_text_list):
             result = ResultRecord(
                 model=model_name,
@@ -71,19 +71,19 @@ def train(
     fs: FileSystem, push_to_hub: bool = False
 ) -> tuple[GPT2LMHeadModel, GPT2TokenizerFast]:
 
-    if not fs.tokenizer.exists():
+    if not fs.tokenizer_path.exists():
         if VERBOSE:
             print("***** Tokenizer not found, creating tokenizer... *****")
         fine_tune.tokenizer(fs)
 
-    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(fs.tokenizer)
+    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(fs.tokenizer_path)
 
-    if not fs.model.exists():
+    if not fs.model_path.exists():
         if VERBOSE:
             print("***** Model not found, creating model... *****")
         fine_tune.model(fs, tokenizer, push_to_hub=False)
     # load the model from the saved path
-    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model)  # type: ignore
+    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
     model.resize_token_embeddings(len(tokenizer))
 
     return model, tokenizer
@@ -114,13 +114,13 @@ def main(fs: FileSystem) -> None:
     """
     print(f"***** Training model: {fs.model_name} *****")
     print(f"***** From the base model: {fs.base_model} *****")
-    print(f"***** Using dataset: {fs.dataset_dict} *****")
+    print(f"***** Using dataset: {fs.dataset_dict_path} *****")
     # 1.0 -> fine-tune the tokenizer
-    if not fs.tokenizer.exists():
+    if not fs.tokenizer_path.exists():
         print("***** Tokenizer not found, creating tokenizer... *****")
         fine_tune.tokenizer(fs)
 
-    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(fs.tokenizer)
+    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(fs.tokenizer_path)
     encoding_kwargs = {
         "batched": True,
         "batch_size": CONSTANTS.BATCH_SIZE,
@@ -134,26 +134,26 @@ def main(fs: FileSystem) -> None:
         return encoding_kwargs
 
     # 2.0 -> build the dataset_dict
-    if not fs.dataset_dict.exists():
+    if not fs.dataset_dict_path.exists():
         print("***** Dataset not found, creating dataset... *****")
         # 2.1 -> build the json lines file
-        if not fs.json_lines.exists():
-            if not fs.raw_text.exists():
+        if not fs.json_lines_file.exists():
+            if not fs.raw_text_file.exists():
                 raise FileNotFoundError
             TextFile(fs).save_to_disk()
             print("***** Json Lines not found, creating json lines... *****")
 
-        Dataset.from_json(fs.json_lines).map(**encode("metadata")).map(
+        Dataset.from_json(fs.json_lines_file).map(**encode("metadata")).map(
             **encode("prompt")
-        ).map(**encode("completion")).save_to_disk(str(fs.dataset_dict))
+        ).map(**encode("completion")).save_to_disk(str(fs.dataset_dict_path))
 
     # 3.0 -> build the dataset_dict from the file system
-    if not fs.model.exists():
+    if not fs.model_path.exists():
         print("***** Model not found, creating model... *****")
         fine_tune.model(fs, tokenizer, push_to_hub=False)
 
     # # load the model from the saved path
-    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model)  # type: ignore
+    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
     model.resize_token_embeddings(len(tokenizer))
     pipe = CodePredictionPipeline(
         model=model,
@@ -162,7 +162,7 @@ def main(fs: FileSystem) -> None:
         max_length=CONSTANTS.MAX_LENGTH,
         num_return_sequences=1,
     )
-    result = pipe.generate_forecast(
+    result = pipe.generate(
         fs.config["prompt-examples"], strategy=HyperParameterStrategy.GREEDY
     )
     print(result)

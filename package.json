@@ -2,7 +2,7 @@
     "scripts": {
       "start": "snowpack dev",
       "build": "snowpack build",
-      "api": "uvicorn api.main:app --reload --reload-dir api --port 8000",
+      "api": "uvicorn src.fite.api:app --reload --reload-dir src/ --port 8000",
       "test": "web-test-runner \"client/**/*.test.tsx\"",
       "format": "prettier --write \"client/**/*.{js,jsx,ts,tsx}\"",
       "lint": "prettier --check \"client/**/*.{js,jsx,ts,tsx}\""
