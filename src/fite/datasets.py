@@ -32,25 +32,6 @@ class Datum(TypedDict):
     completion: str
 
 
-# def _generate_datums(rows: list[dict[str, str | dict[str, str]]]) -> Iterable[Datum]:
-#     """
-#     iterate over the rows splitting each word, the split text is used to create the prompt and completion.
-#     the __text__ is popped from each dict to create the prompt and completion.
-#     the remaining dict is used as the metadata.
-#     """
-#     for row in rows:
-#         prompt = ""
-#         text_list = row.pop("__text__").split()  # type: ignore
-#         # row = toml.dumps(row)
-#         for i, text in enumerate(text_list):
-#             prompt += f"{text} "
-
-#             yield Datum(
-#                 metadata=row,
-#                 prompt=prompt,
-#                 completion=" ".join(text_list[i + 1 :]),
-#             )
-
 
 MetadataCallback = Callable[[pd.Series], pd.Series | pd.DataFrame]
 
@@ -100,11 +81,12 @@ class TextFile:
         if not self.extract_pattern:
             raise ValueError("escaped_extraction_pattern must be provided")
         return s.str.extract(self.extract_pattern)
+    def split_lines(self,text:str) -> list[str]:
+        return re.split(self.split_pattern, text)
 
     def __post_init__(self):
-        sep = re.compile(self.split_pattern)
-        with self.fs.raw_text.open("r") as f:
-            s = pd.Series(sep.split(f.read()), name="text").str.strip()
+        with self.fs.raw_text_file.open("r") as f:
+            s = pd.Series(self.split_lines(f.read()), name="text").str.strip()
         if self.metadata_handler and self.extract_pattern:
             import warnings
 
@@ -161,4 +143,4 @@ class TextFile:
         )
 
     def save_to_disk(self) -> None:
-        self._frame.to_json(self.fs.json_lines, orient="records", lines=True)
+        self._frame.to_json(self.fs.json_lines_file, orient="records", lines=True)
