@@ -14,16 +14,15 @@ if sys.version_info >= (3, 11):
 else:
     from typing_extensions import TypeVarTuple, Unpack
 
-import toml
 import torch
 from transformers import AddedToken
 
 from .enum import RegexEnum, StrEnum
 from .pipeline import HyperParameters, HyperParameterStrategy
-from .typing import ModelConfig
 from .typing import (
     DatasetDictPath,
     JSONLinesFile,
+    ModelConfig,
     ModelPath,
     PyProjectTOML,
     RawTextFile,
@@ -228,31 +227,6 @@ class ActionStr(StrEnum):
     COUNT = "count"
     HELP = "help"
     VERSION = "version"
-
-
-class TomlEncoder(toml.TomlEncoder):
-    """TomlEncoder is a custom toml encoder to handle lists
-    specifically how the toml.TomlEncoder handles lists:
-    instead of:
-    >>> toml.dumps({"a": ["1", "2", "3"]})
-    'a = ["1", "2", "3"]'
-    it will be:
-    >>> toml.dumps({"a": ["1", "2", "3"]})
-    'a = [
-        "1",
-        "2",
-        "3",
-    ]'
-    """
-
-    def dump_list(self, value_list: list) -> str:
-        result = "["
-        if value_list:
-            result += "\n"
-            for u in value_list:
-                result += f"\t{self.dump_value(u)},\n"
-        result += "]"
-        return result
 
 
 @contextmanager
