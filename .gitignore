@@ -1,5 +1,10 @@
 node_modules/
 __pycache__/
 store/*
-!store/data/
+!store/gpt2-taf-base1/
+store/gpt2-taf-base1/*
+!store/gpt2-taf-base1/training-data.txt
+
 .vscode/
+build/
+*.egg-info
