@@ -200,7 +200,7 @@ if __name__ == "__main__":
     args = parser.parse_args(namespace=Namespace())
 
     # create the file system which includes multiple FileSystems for several models
-    fsd = FileSystemDirectory(BASE_MODEL_NAME, args.version)
+    fsd = FileSystemDirectory(args.version)
     fs = fsd.get(args.filesystem)
 
     if args.verbose:
