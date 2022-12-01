@@ -12,7 +12,7 @@ BECMG 0704/0705 01015G17KT 9999 BKN020 BKN025 QNH2902INS
 BECMG 0705/0706 VRB06KT 9999 BKN020 QNH2902INS TX13/0421Z TNM03/0508Z`,
 ];
 interface FITEState {
-  taf: string;
+  text: string;
   suggestionsList: string[];
   suggestionIndex: number;
   start: number;
@@ -28,7 +28,7 @@ type FITEActionState = FITEState & {
 };
 function initializeState(): FITEState {
   return {
-    taf: "TAF KBLV 280100Z 2801/2807 01012G18KT",
+    text: "TAF KBLV 280100Z 2801/2807 01012G18KT",
     suggestionsList: TAF_STRING,
     suggestionIndex: 0,
     start: 0,
@@ -39,7 +39,7 @@ function initializeState(): FITEState {
 function useFITE(url: string): FITEActionState {
   console.log(url);
   const [state, dispatchState] = React.useState<FITEState>(initializeState);
-  const { taf, start, end, suggestionsList, suggestionIndex } = state;
+  const { text, start, end, suggestionsList, suggestionIndex } = state;
   const setState = React.useCallback(
     (state: PartialState) =>
       dispatchState((prevState) => ({ ...prevState, ...state })),
@@ -54,16 +54,16 @@ function useFITE(url: string): FITEActionState {
     const options = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userInput: taf }),
+      body: JSON.stringify({ text }),
     };
-    if (taf.endsWith(" ")) {
+    if (text.endsWith(" ")) {
       fetch(url, options)
         .then((response) => response.json())
         .then((autoTaf: string[]) =>
           setState({ suggestionsList: [autoTaf.join("\n")] })
         );
     }
-  }, [url, taf, setState]);
+  }, [url, text, setState]);
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -86,27 +86,27 @@ function useFITE(url: string): FITEActionState {
         
       } else if (ctrlKey && key === "Enter")  {
         event.preventDefault();
-        setState({ taf: suggestionsList[suggestionIndex] });
+        setState({ text: suggestionsList[suggestionIndex] });
         
       } else if (key === "Tab") {
         event.preventDefault();
         // update the taf value with the next word in the suggestion
         const nextWord = suggestion.split(" ")[start];
-        const newTaf = taf.slice(0, end) + nextWord + taf.slice(end);
-        setState({ taf: newTaf });
+        const newText = text.slice(0, end) + nextWord + text.slice(end);
+        setState({ text: newText });
 
       }
       // update the start and end values
       // setState({ start: selectionStart, end: selectionEnd });
 
     },
-    [suggestionsList, suggestionIndex, suggestion, taf, start, end, setState]
+    [suggestionsList, suggestionIndex, suggestion, text, start, end, setState]
   );
 
   const handleChange = React.useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       const { value } = event.target;
-      setState({ taf: value, start: value.length, end: value.length });
+      setState({ text: value, start: value.length, end: value.length });
     },
     []
   );

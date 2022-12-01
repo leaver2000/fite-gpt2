@@ -1,6 +1,6 @@
 import re
 
-from .enum import RegexEnum
+from ._enum import RegexEnum
 
 TOKEN_PATTERN = re.compile(
     r"(?<=\s\d{3})(?=\d{2,3})|(?=KT)|(?=G\d{2}KT)|(?=G\d{3}KT)|(?<=FEW|SCT|BKN|OVC)|(?<=(FEW|SCT|BKN|OVC)\d{3})(?=CB)"

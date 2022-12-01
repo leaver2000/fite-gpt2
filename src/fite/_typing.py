@@ -34,7 +34,10 @@ TOMLDict = dict[str, list | dict | str | int | float | bool | None | Any]
 ModelConfig = TypedDict(
     "ModelConfig",
     {
-        "model-name": str,
+        "base-model": str,  # gpt2
+        "dataset": str,  # taf
+        "version": str,  # base1 | base1.2021-09-01
+        "model-name": str,  # gpt2-taf-base1 | gpt2-taf-base1.2021-09-01
         "description": str,
         "prompt-examples": list[str],
         "additional-tokens": list[str],
@@ -83,7 +86,10 @@ class PyProjectTOML(_PyProject):
     """
 
     @classmethod
-    def load(cls, path: str | Path = "pyproject.toml") -> "PyProjectTOML":
+    def load(cls, path: str | Path | None = None) -> "PyProjectTOML":
+        if not path:
+            path = "pyproject.toml"
+
         if isinstance(path, str):
             path = Path(path)
 

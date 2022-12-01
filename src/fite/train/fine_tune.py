@@ -11,7 +11,10 @@ from transformers import (
     TrainingArguments,
 )
 
-from ..util import CONSTANTS, DEFAULT_DEVICE, FileSystem, SpecialTokens
+from ..util import SpecialTokens
+
+# training module imports
+from .filesystem import CONSTANTS, DEFAULT_DEVICE, FileSystem
 
 
 def tokenizer(fs: FileSystem) -> None:
@@ -56,7 +59,7 @@ def model(
     # ###  Trainer Setup ###
     # configure the trainer arguments
     training_arguments = TrainingArguments(
-        run_name=fs.name,
+        run_name=fs.model_name,
         output_dir=str(fs.model_path),
         overwrite_output_dir=True,
         per_device_train_batch_size=CONSTANTS.BATCH_SIZE,
@@ -108,6 +111,6 @@ def model(
     # save model
     model.save_pretrained(fs.model_path)
     if push_to_hub:
-        model.push_to_hub(fs.name)
+        model.push_to_hub(fs.model_name)
         repo_url = trainer.push_to_hub()
         print(f"Pushed model to 🤗 {repo_url}")
