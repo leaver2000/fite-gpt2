@@ -1,13 +1,13 @@
-import enum
 from datetime import datetime
-from typing import TypeAlias, Union
+from typing import Union
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from .enum import EnumBase, StrEnum
 from .pipeline import CodePredictionPipeline, Strategys
-from .util import FileSystemDirectory, StrEnum
+from .util import FileSystemDirectory
 
 app = FastAPI()
 app.add_middleware(
@@ -19,31 +19,29 @@ app.add_middleware(
 fsd = FileSystemDirectory()
 
 
-class PipelineEngine(enum.Enum):
+class PipelineEngine(EnumBase):
     """Pipeline engine to use for code generation."""
 
     value: CodePredictionPipeline
     taf = fsd.get_pipeline("taf")
 
     @classmethod
-    def get_pipeline(cls, pipeline: Union["Pipelines", str]) -> CodePredictionPipeline:
-        if not isinstance(pipeline, str):
-            pipeline = pipeline.name
+    def get_pipeline(cls, pipeline: Union[StrEnum, str]) -> CodePredictionPipeline:
         return cls[pipeline].value
 
     @classmethod
     def generate(
         cls,
-        pipeline: Union["Pipelines", str],
+        pipeline: Union[StrEnum, str],
         text: str | list[str],
         strategy: Strategys | str | None = None,
     ) -> list[list[str]]:
         return cls.get_pipeline(pipeline).generate(text, strategy=strategy)
 
 
-Pipelines: TypeAlias = StrEnum(
-    "Pipelines", PipelineEngine._member_names_, module=__name__
-)
+Pipelines: type[StrEnum] = StrEnum(
+    "Pipelines", PipelineEngine.list_members()
+)  # type: ignore
 
 
 class Prompt(BaseModel):
@@ -78,11 +76,6 @@ def get_strategys(name: str):
     return Strategys[name].value
 
 
-@app.post("/generate/{name}")
-def generate(name: Pipelines, prompt: Prompt, strategy: Strategys):
-    return PipelineEngine.generate(name, prompt.text, strategy=strategy)
-
-
-# @app.post("/generate/{pipeline}/{strategy}")
-# def generate(prompt: Prompt, pipeline: Pipelines, strategy: Strategys):
-#     return PipelineEngine.generate(pipeline, prompt.text, strategy=strategy)
+@app.post("/generate/{pipeline}")
+def generate(prompt: Prompt, pipeline: Pipelines, strategy: Strategys):  # type: ignore
+    return PipelineEngine.generate(pipeline, prompt.text, strategy=strategy)

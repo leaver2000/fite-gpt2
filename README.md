@@ -17,12 +17,11 @@ model-name = "gpt2-taf-base1" # store/gpt2-taf-base1/[training-data.txt | traini
 
 ```
 
-> ✨ Bootstrapped with Create Snowpack App (CSA).
 
 ## install
 
 ``` bash
-git clone ...
+git clone ... && cd ...
 python -m venv ~/venv
 source ~/venv/bin/activate
 pip install .
@@ -91,18 +90,12 @@ once the model has been trained you can access the TAF pipeline via the api modu
 ```  python
 Python 3.10.6 (main, Nov  2 2022, 18:53:38) [GCC 11.3.0] on linux
 Type "help", "copyright", "credits" or "license" for more information.
->>> from api.main import Engine
->>> taf_pipeline = Engine["TAF"]
->>> taf_pipeline.generate_forecast("TAF KBLV 181730Z 1818/1918 VRB06KT") # chooses a random preset hyper-parameter strategy
-[['TAF KBLV 181730Z 1818/1918 VRB06KT 9999 FEW010 SCT200 QNH2997INS', 'BECMG 1800/1801 VRB06KT 9999 SCT020 OVC200 QNH2999INS', 'BECMG 1811/1812 VRB06KT 9999 SCT030 BKN200 QNH3001INS', 'BECMG 1814/1815 26015KT 9999 SCT030 BKN200 QNH3005INS TX11/1719Z TN00/1810Z']]
->>> taf_pipeline.generate_forecast("TAF KBLV 181730Z 1818/1918 VRB06KT", "GREEDY")
-[['TAF KBLV 181730Z 1818/1918 VRB06KT 9999 FEW050 QNH3029INS', 'BECMG 1714/1715 26010G15KT 9999 FEW060 QNH3028INS TX02/1620Z TNM03/1712Z']]
->>> taf_pipeline.generate_forecast("TAF KBLV 181730Z 1818/1918 VRB06KT", "TOP_K5")
-[['TAF KBLV 181730Z 1818/1918 VRB06KT 9999 FEW020 BKN040 QNH2993INS', 'BECMG 1702/1703 27012KT 9999 FEW030 BKN250 QNH3010INS', 'BECMG 1710/1711 VRB06KT 9999 SCT250 QNH3020INS TX05/1620Z TN00/1712Z']]
->>> results, = taf_pipeline.generate_forecast("TAF KBLV 181730Z 1818/1918 27015G30KT 8000", "TOP_K5")
->>> print("\n".join(results))
-TAF KBLV 181730Z 1818/1918 27015G30KT 8000 -SN OVC015 620156 QNH3005INS
-BECMG 1711/1712 27009KT 9999 NSW BKN025 620257 QNH3010INS TXM04/1619Z TNM13/1710Z
+>>> from fite.api import PipelineEngine
+>>> pipeline = PipelineEngine.get_pipeline("taf")
+>>> pipeline.generate("TAF KBLV 010000Z 0100/0206", "GREEDY")
+[['TAF KBLV 010000Z 0100/0206 VRB06KT 9999 BKN020 QNH3021INS', 'BECMG 0111/0112 VRB06KT 9999 BKN020 QNH3021INS', 'BECMG 0116/0117 VRB06KT 9999 BKN020 QNH3021INS TX20/0118Z TN11/0112Z']]
+>>> pipeline.generate("TAF KBLV 010000Z 0100/0206 8000 -TSRA", "GREEDY")
+[['TAF KBLV 010000Z 0100/0206 8000 -TSRA BKN010 OVC020 QNH2993INS', 'BECMG 0111/0112 VRB06KT 9999 NSW FEW015 FEW025 BKN040 QNH2992INS', 'BECMG 0116/0117 VRB06KT 9999 FEW200 QNH2992INS TX20/0120Z TN09/0112Z']]
 ```
 
 or load the model and tokenizer directly from the store via the transformers API, the pipeline provides a more convenient interface and preset configuration
@@ -110,8 +103,8 @@ or load the model and tokenizer directly from the store via the transformers API
 
 ``` python
 >>> from transformers import GPT2LMHeadModel, GPT2TokenizerFast
->>> model = GPT2LMHeadModel.from_pretrained("store/models/gpt2-taf-0.1.0")
->>> tokenizer = GPT2TokenizerFast.from_pretrained("store/tokenizer/gpt2-taf-0.1.0")
+>>> model = GPT2LMHeadModel.from_pretrained(PATH_TO_TAF_MODEL)
+>>> tokenizer = GPT2TokenizerFast.from_pretrained(PATH_TO_TAF_TOKENIZER>)
 ```
 
 
@@ -164,13 +157,16 @@ Your app is ready to be deployed!
 <!-- POST ROUTE -->
 ``` bash
 curl -X 'POST' \
-  'http://127.0.0.1:8000/generate/TAF/GREEDY' \
+  'http://127.0.0.1:8000/generate/taf?strategy=TOP_P98' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
-  "userInput": "TAF KBLV 181730Z 1818/1918 "
+  "text": [
+    "TAF KBLV 010000Z 0103/0112 00000KT 9999 SCT250",
+    "TAF KDAA 010000Z 0103/0112 00000KT 5000"
+  ]
 }'
-["TAF KBLV 181730Z 1818/1918 VRB06KT 9999 FEW050 QNH3029INS","BECMG 1714/1715 26010G15KT 9999 FEW060 QNH3028INS TX02/1620Z TNM03/1712Z"]
+[["TAF KBLV 010000Z 0103/0112 00000KT 9999 SCT250 QNH3038INS","BECMG 0214/0215 09012KT 9999 SKC QNH3046INS","BECMG 0217/0218 04009KT 9999 BKN030 QNH3044INS","BECMG 0220/0221 05008KT 9999 SKC QNH3044INS","BECMG 0223/0604 VRB03KT 9999 SKC QNH3038INS TX21/0120Z TN09/0212Z"],["TAF KDAA 010000Z 0103/0112 00000KT 5000 BR OVC007 QNH2991INS TX20/0218Z TN04/0111Z"]]%  
 ```
 
 
@@ -218,14 +214,22 @@ Versions of relevant libraries:
 ```
 ### install
 
+### FastAPI swagger-ui
+![swagger-ui](https://user-images.githubusercontent.com/76945789/204947048-046c6c0f-1dbf-4c81-b608-45aaac053097.png)
+#### strategy
+
+The Strategy enum is used to select the sampling strategy for the model. The default is GREEDY, which selects the highest probability token at each step. TOP_K selects the top k tokens at each step, where k is the value of the k parameter. TOP_P selects the smallest set of tokens whose cumulative probability exceeds the value of the p parameter. TOP_P98 is a shortcut for TOP_P with p=0.98. TOP_P is recommended for generating text, while TOP_K is recommended for generating code.
 
 
-## client
+![image](https://user-images.githubusercontent.com/76945789/204947737-fc0be305-76a6-4d72-9215-e36eba6c95ad.png)
 
-![image](https://user-images.githubusercontent.com/76945789/203187237-31a110a3-c340-4995-a24a-8be634f8c587.png)
+### request body
 
-## server
+![request body](https://user-images.githubusercontent.com/76945789/204947636-eae02c87-1995-48b9-9575-8ef925dafd47.png)
+
+![client](https://user-images.githubusercontent.com/76945789/203187237-31a110a3-c340-4995-a24a-8be634f8c587.png)
 ![image](https://user-images.githubusercontent.com/76945789/203183599-ba4adad0-d87b-407a-94ac-d9acb2c19d08.png)
+
 
 
 ## references

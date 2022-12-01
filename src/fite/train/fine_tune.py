@@ -28,7 +28,7 @@ def tokenizer(fs: FileSystem) -> None:
     special_tokens["additional_special_tokens"] = fs.config["additional-special-tokens"]
     tokenizer.add_special_tokens(special_tokens)  # type: ignore
 
-    tokenizer.save_pretrained(fs.tokenizer)
+    tokenizer.save_pretrained(fs.tokenizer_path)
 
 
 def model(
@@ -52,12 +52,12 @@ def model(
     model.resize_token_embeddings(len(tokenizer))
 
     print("***** Loading dataset... *****")
-    tokenized_ds = DatasetDict.load_from_disk(str(fs.dataset_dict))
+    tokenized_ds = DatasetDict.load_from_disk(str(fs.dataset_dict_path))
     # ###  Trainer Setup ###
     # configure the trainer arguments
     training_arguments = TrainingArguments(
         run_name=fs.name,
-        output_dir=str(fs.model),
+        output_dir=str(fs.model_path),
         overwrite_output_dir=True,
         per_device_train_batch_size=CONSTANTS.BATCH_SIZE,
         per_device_eval_batch_size=CONSTANTS.BATCH_SIZE,
@@ -106,7 +106,7 @@ def model(
     # train the model
     trainer.train()
     # save model
-    model.save_pretrained(fs.model)
+    model.save_pretrained(fs.model_path)
     if push_to_hub:
         model.push_to_hub(fs.name)
         repo_url = trainer.push_to_hub()

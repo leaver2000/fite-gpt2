@@ -1,7 +1,7 @@
 import dataclasses
 import random
 import re
-from typing import Iterable, Optional, TypeAlias, TypedDict, Union
+from typing import Iterable, Optional, TypedDict, Union
 
 import torch
 from transformers import (
@@ -183,8 +183,7 @@ class HyperParameterStrategy(DictEnum):
     TOP_KP_T175 = TOP_KP | TEMP_175
 
 
-StrategysType: TypeAlias = StrEnum
-Strategys: TypeAlias = StrEnum("Strategys", HyperParameterStrategy._member_names_)
+Strategys: type[StrEnum] = StrEnum("Strategys", HyperParameterStrategy.list_members())  # type: ignore
 
 
 class TokenIds(TypedDict):

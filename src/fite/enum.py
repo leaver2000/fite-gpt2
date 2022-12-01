@@ -1,10 +1,43 @@
 import enum
 import re
+from typing import Generic, TypeVar
 
 __all__ = ["StrEnum", "RegexEnum", "DictEnum"]
+_VT = TypeVar("_VT")
 
 
-class StrEnum(str, enum.Enum):
+class EnumMember(Generic[_VT]):
+    name: str
+    value: _VT
+    _member_type_: type
+    _member_names_: list[str]
+    _member_map_: dict[str, _VT]
+
+
+class EnumBase(Generic[_VT], enum.Enum):
+    value: _VT
+
+    @classmethod
+    def list_members(cls) -> list[str]:
+        return cls._member_names_
+
+    @classmethod
+    def list_values(cls) -> list[_VT]:
+        return [member.value for member in cls]
+
+    # value:_V
+
+    # def __getattr__(cls, _: str) -> EnumMember[_VT]:
+    #     ...
+
+    # def __iter__(cls) -> Generator[EnumMember[_VT], None, None]:
+    #     yield from super().__iter__() # type: ignore
+
+    # def to_dict(cls) -> dict[str, _VT]:
+    #     return {member.name: member.value for member in cls}
+
+
+class StrEnum(str, EnumBase):
     value: str
 
     def __str__(self) -> str:
@@ -12,10 +45,6 @@ class StrEnum(str, enum.Enum):
 
     def _generate_next_value_(name: str, *_) -> str:
         return name
-
-    @classmethod
-    def list_members(cls) -> list[str]:
-        return cls._member_names_
 
 
 class RegexEnum(StrEnum):
@@ -34,6 +63,6 @@ class RegexEnum(StrEnum):
         return self.compile()
 
 
-class DictEnum(dict, enum.Enum):
+class DictEnum(dict, EnumBase):
     def __str__(self) -> str:
         return self.name
