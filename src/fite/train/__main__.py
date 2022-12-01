@@ -5,18 +5,19 @@ import torch
 from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 from .. import __version__ as VERSION
-from ..datasets import Dataset, TextFile
-from ..pipeline import CodePredictionPipeline, HyperParameterStrategy
-from ..train import fine_tune
+from ..pipeline import HyperParameterStrategy, Pipeline
 from ..util import (
     CONSTANTS,
     DEFAULT_DEVICE,
     ActionStr,
-    FileSystem,
-    FileSystemDirectory,
     ResultRecord,
     suppress_stdout,
 )
+
+# training module imports
+from . import fine_tune
+from .datasets import Dataset, TextFile
+from .filesystem import FileSystem, FileSystemDirectory
 
 # DONT CHANGE
 FRAMEWORK = "pt"
@@ -33,7 +34,7 @@ def get_results(
 
     model, tokenizer = train(fs, push_to_hub=False)
 
-    pipe = CodePredictionPipeline(
+    pipe = Pipeline(
         model=model,
         tokenizer=tokenizer,
         device=DEFAULT_DEVICE,
@@ -51,7 +52,7 @@ def get_results(
         prompt_examples += prompts
     model_name = fs.model_name
     results = []
-    for strategy in [HyperParameterStrategy.GREEDY]:
+    for strategy in HyperParameterStrategy:
         if VERBOSE:
             print(f"***** Running {strategy.name} strategy *****")
         generated_text_list = pipe.generate(prompt_examples, strategy=strategy)
@@ -158,12 +159,12 @@ def main(fs: FileSystem) -> None:
         print("***** Model not found, creating model... *****")
         fine_tune.model(fs, tokenizer, push_to_hub=False)
 
-    # # load the model from the saved path
+    # load the model from the saved path
     model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
     model.resize_token_embeddings(len(tokenizer))
     # model = fs.get_model().to(DEFAULT_DEVICE)
     # model.to(DEFAULT_DEVICE).resize_token_embeddings(len(tokenizer))
-    pipe = CodePredictionPipeline(
+    pipe = Pipeline(
         model=model,
         tokenizer=tokenizer,
         device=DEFAULT_DEVICE,
@@ -196,7 +197,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(prog="code-predictor")
     parser.add_argument("filesystem", help="The dataset to train")
-    parser.add_argument("--dataset-name", type=str, default="taf")
+    parser.add_argument("--dataset-name", type=str, default="gpt2-taf-base1")
     parser.add_argument(
         "--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT"
     )
@@ -208,7 +209,7 @@ if __name__ == "__main__":
     args = parser.parse_args(namespace=Namespace())
 
     # create the file system which includes multiple FileSystems for several models
-    fsd = FileSystemDirectory(args.version)
+    fsd = FileSystemDirectory.load_from_pyproject()
     fs = fsd.get(args.filesystem)
 
     if args.verbose:

@@ -25,17 +25,6 @@ class EnumBase(Generic[_VT], enum.Enum):
     def list_values(cls) -> list[_VT]:
         return [member.value for member in cls]
 
-    # value:_V
-
-    # def __getattr__(cls, _: str) -> EnumMember[_VT]:
-    #     ...
-
-    # def __iter__(cls) -> Generator[EnumMember[_VT], None, None]:
-    #     yield from super().__iter__() # type: ignore
-
-    # def to_dict(cls) -> dict[str, _VT]:
-    #     return {member.name: member.value for member in cls}
-
 
 class StrEnum(str, EnumBase):
     value: str

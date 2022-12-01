@@ -43,6 +43,9 @@ classifiers = [
 root-path = "store/"
 
 [[tool.fite.models]]
+base-model = "gpt2"
+dataset = "taf"
+version = "base1"
 model-name = "gpt2-taf-base1"
 description = "A GPT-2 model trained on TAFs."
 additional-tokens = ["\u0120TAF", "\u0120BECMG", "\u0120TEMPO"]
@@ -56,6 +59,9 @@ prompt-examples = [
 ]
 
 [[tool.fite.models]]
+base-model = "gpt2"
+dataset = "metar"
+version = "base1"
 model-name = "gpt2-metar-base1"
 description = "A GPT-2 model trained on METARs."
 additional-tokens = ["\u0120TAF", "\u0120BECMG", "\u0120TEMPO"]

@@ -8,15 +8,13 @@ import pandas as pd
 from datasets.arrow_dataset import Dataset as ArrowDataset
 from datasets.dataset_dict import DatasetDict
 
-from .util import FileSystem, SpecialTokens
+from ..util import SpecialTokens
+
+# training module imports
+from .filesystem import FileSystem
 
 __all__ = ["Dataset", "TextFile"]
 
-TEMPERATURE_GROUP_PATTERN = (
-    r"\sTX?(?P<max_temp>M?\d{2})\/\d{4}Z\sTN?(?P<min_temp>M?\d{2})\/\d{4}Z$"
-)
-CHANGE_GROUP_PATTERN = r"\s(?=BECMG|TEMPO)"
-SPLIT_PATTERN = "\n\n###\n\n"
 FEATURES = datasets.Features(
     {
         "metadata": datasets.Value("string"),
@@ -46,8 +44,7 @@ class Dataset(ArrowDataset):
         cls, path: Path | str, split: float = 0.2, shuffle: bool = True
     ) -> "DatasetDict":
         """Create a dataset dictionary from a jsonl file."""
-        if isinstance(path, Path):
-            path = str(path)
+
         return ArrowDataset.from_json(str(path), features=FEATURES).train_test_split(  # type: ignore
             test_size=split, shuffle=shuffle
         )
@@ -63,6 +60,7 @@ class TextFile:
     shuffle: bool = True
     metadata_handler: Callable[["pd.Series[str]"], pd.DataFrame] | None = None
     extract_pattern: str | None = None
+    # TODO: possible additional abstraction for the metadata handlers
 
     @staticmethod
     def _metar_handler(s: "pd.Series[str]") -> pd.DataFrame:
@@ -104,12 +102,14 @@ class TextFile:
 
     def _metadata_handlers(self, __s: "pd.Series[str]") -> pd.DataFrame:
         handler = (
-            self.extract if self.extract_pattern else self.__handlers.get(self.fs.name)
+            self.extract
+            if self.extract_pattern
+            else self.__handlers.get(self.fs.model_name)
         )
         if not handler:
             import warnings
 
-            warnings.warn(f"No metadata handler detected for {self.fs.name}")
+            warnings.warn(f"No metadata handler detected for {self.fs.model_name}")
             return __s.to_frame()
         return __s.pipe(handler).join(__s)
 

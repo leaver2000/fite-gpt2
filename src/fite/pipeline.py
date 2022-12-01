@@ -1,7 +1,8 @@
 import dataclasses
 import random
 import re
-from typing import Iterable, Optional, TypedDict, Union
+from pathlib import Path
+from typing import Iterable, Optional, TypeAlias, TypedDict
 
 import torch
 from transformers import (
@@ -17,9 +18,16 @@ from transformers.tokenization_utils_base import (
 )
 from typing_extensions import Unpack
 
-from .enum import DictEnum, StrEnum
+from ._enum import DictEnum, StrEnum
+from ._typing import ModelConfig, PyProjectTOML
 
-__all__ = ["CodePredictionPipeline", "HyperParameters", "HyperParameterStrategy"]
+__all__ = [
+    "Pipeline",
+    "PipelineEngine",
+    "Strategys",
+    "HyperParameters",
+    "HyperParameterStrategy",
+]
 
 
 class Sample(TypedDict):
@@ -183,7 +191,10 @@ class HyperParameterStrategy(DictEnum):
     TOP_KP_T175 = TOP_KP | TEMP_175
 
 
-Strategys: type[StrEnum] = StrEnum("Strategys", HyperParameterStrategy.list_members())  # type: ignore
+# kinda of a hacky solution to dynamically add the strategies to the class and keep the linter happy
+# otherwise the class is represented as a type[Enum] and the linter complains about the @classmethod's
+_Strategys: type[StrEnum] = StrEnum("Strategys", HyperParameterStrategy.list_members())  # type: ignore
+Strategys: TypeAlias = _Strategys
 
 
 class TokenIds(TypedDict):
@@ -199,7 +210,7 @@ def strip_split(text_string: str) -> list[str]:
 
 
 @dataclasses.dataclass
-class CodePredictionPipeline(TextGenerationPipeline):
+class Pipeline(TextGenerationPipeline):
     """
     https://huggingface.co/docs/transformers/v4.24.0/en/main_classes/model#generative-models
     """
@@ -279,7 +290,7 @@ class CodePredictionPipeline(TextGenerationPipeline):
     def generate(
         self,
         text: str | list[str],
-        strategy: Union[Strategys, str, None] = None,
+        strategy: Optional[HyperParameterStrategy | Strategys | str] = None,
         padding: PaddingStrategy | bool = True,
         truncation: TruncationStrategy | bool = True,
         **kwargs: Unpack[HyperParameters],
@@ -299,8 +310,11 @@ class CodePredictionPipeline(TextGenerationPipeline):
 
         if not isinstance(strategy, HyperParameterStrategy):
             strategy = HyperParameterStrategy[
-                strategy if strategy else random.choice(list(Strategys))
-            ]  # type: ignore
+                strategy
+                if strategy
+                else random.choice(HyperParameterStrategy.list_members())
+            ]
+            # type: ignore
 
         # BatchEncoding provides the token_ids and attention_mask
         encoding = self.encode(text, padding=padding, truncation=truncation)
@@ -319,3 +333,69 @@ class CodePredictionPipeline(TextGenerationPipeline):
             bos_token_id=self.tokenizer.bos_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
         )
+
+
+@dataclasses.dataclass
+class PipelineEngine:
+    root_path: Path | str
+    models: list[ModelConfig]
+    device: torch.device = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu", index=0
+    )
+
+    def __post_init__(self):
+        root = self.root_path
+        if isinstance(root, str):
+            root = Path(root)
+
+        self.__pipelines: dict[str, Pipeline] = {}
+        for model in self.models:
+            pipeline_path = root / model["model-name"]
+            model_path = pipeline_path / "model"
+            tokenizer_path = pipeline_path / "tokenizer"
+            if not model_path.exists() or not tokenizer_path.exists():
+                import warnings  # noqa
+
+                warnings.warn(
+                    f"Model {model['model-name']} was found in the config but not on disk\n"
+                    f"Model path: {model_path}\n"
+                    f"Tokenizer path: {tokenizer_path}\n"
+                    "Skipping..."
+                )
+
+                continue
+
+            self.__pipelines[model["model-name"]] = Pipeline(
+                model=GPT2LMHeadModel.from_pretrained(model_path),  # type: ignore
+                tokenizer=GPT2Tokenizer.from_pretrained(tokenizer_path),
+                device=self.device,
+                max_length=256,
+            )
+
+    @classmethod
+    def load_from_pyproject(
+        cls, path: str | Path = "pyproject.toml"
+    ) -> "PipelineEngine":
+        return cls.from_pyproject(PyProjectTOML.load(path))
+
+    @classmethod
+    def from_pyproject(cls, pyproject: PyProjectTOML) -> "PipelineEngine":
+        config = pyproject["tool"]["fite"]
+        return PipelineEngine(root_path=config["root-path"], models=config["models"])
+
+    def list_models(self) -> list[str]:
+        return list(self.__pipelines.keys())
+
+    def get_pipeline(self, name: str | StrEnum) -> Pipeline:
+        return self.__pipelines[name]
+
+    def get_model(self, name: str | StrEnum) -> GPT2LMHeadModel:
+        return self.get_pipeline(name).model
+
+    def generate(
+        self,
+        pipeline: str | StrEnum,
+        text: str | list[str],
+        strategy: str | StrEnum | None = None,
+    ) -> list[list[str]]:
+        return self.get_pipeline(pipeline).generate(text, strategy=strategy)
