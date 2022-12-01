@@ -219,7 +219,8 @@ Versions of relevant libraries:
 ![swagger-ui](https://user-images.githubusercontent.com/76945789/204947048-046c6c0f-1dbf-4c81-b608-45aaac053097.png)
 #### strategy
 the strategy defines the hyper-parameters passed to the model
-![strategy](https://user-images.githubusercontent.com/76945789/204947247-338aac01-b82f-4e25-bc2a-996de7920e51.png)
+![image](https://user-images.githubusercontent.com/76945789/204947737-fc0be305-76a6-4d72-9215-e36eba6c95ad.png)
+
 ### request body
 ![request body](https://user-images.githubusercontent.com/76945789/204947636-eae02c87-1995-48b9-9575-8ef925dafd47.png)
 
