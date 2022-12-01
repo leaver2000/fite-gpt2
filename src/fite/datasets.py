@@ -32,7 +32,6 @@ class Datum(TypedDict):
     completion: str
 
 
-
 MetadataCallback = Callable[[pd.Series], pd.Series | pd.DataFrame]
 
 
@@ -81,7 +80,8 @@ class TextFile:
         if not self.extract_pattern:
             raise ValueError("escaped_extraction_pattern must be provided")
         return s.str.extract(self.extract_pattern)
-    def split_lines(self,text:str) -> list[str]:
+
+    def split_lines(self, text: str) -> list[str]:
         return re.split(self.split_pattern, text)
 
     def __post_init__(self):

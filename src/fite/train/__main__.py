@@ -1,5 +1,6 @@
 import json
 from typing import Literal
+
 import torch
 from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 

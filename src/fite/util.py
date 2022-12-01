@@ -76,8 +76,8 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
         return GPT2LMHeadModel.from_pretrained(self.model_path, **kwargs).to(DEFAULT_DEVICE)  # type: ignore
 
     def get_tokenizer(self, **kwargs) -> GPT2TokenizerFast:
-        # You're using a GPT2TokenizerFast tokenizer. 
-        # Please note that with a fast tokenizer, using the `__call__` method is faster 
+        # You're using a GPT2TokenizerFast tokenizer.
+        # Please note that with a fast tokenizer, using the `__call__` method is faster
         # than using a method to encode the text followed by a call to the `pad` method to get a padded encoding.
         return GPT2TokenizerFast.from_pretrained(self.tokenizer_path, **kwargs)
 
