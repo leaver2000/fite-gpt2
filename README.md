@@ -17,12 +17,11 @@ model-name = "gpt2-taf-base1" # store/gpt2-taf-base1/[training-data.txt | traini
 
 ```
 
-> ✨ Bootstrapped with Create Snowpack App (CSA).
 
 ## install
 
 ``` bash
-git clone ...
+git clone ... && cd ...
 python -m venv ~/venv
 source ~/venv/bin/activate
 pip install .
@@ -218,10 +217,14 @@ Versions of relevant libraries:
 ### FastAPI swagger-ui
 ![swagger-ui](https://user-images.githubusercontent.com/76945789/204947048-046c6c0f-1dbf-4c81-b608-45aaac053097.png)
 #### strategy
-the strategy defines the hyper-parameters passed to the model
+
+The Strategy enum is used to select the sampling strategy for the model. The default is GREEDY, which selects the highest probability token at each step. TOP_K selects the top k tokens at each step, where k is the value of the k parameter. TOP_P selects the smallest set of tokens whose cumulative probability exceeds the value of the p parameter. TOP_P98 is a shortcut for TOP_P with p=0.98. TOP_P is recommended for generating text, while TOP_K is recommended for generating code.
+
+
 ![image](https://user-images.githubusercontent.com/76945789/204947737-fc0be305-76a6-4d72-9215-e36eba6c95ad.png)
 
 ### request body
+
 ![request body](https://user-images.githubusercontent.com/76945789/204947636-eae02c87-1995-48b9-9575-8ef925dafd47.png)
 
 
