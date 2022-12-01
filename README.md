@@ -227,8 +227,13 @@ The Strategy enum is used to select the sampling strategy for the model. The def
 
 ![request body](https://user-images.githubusercontent.com/76945789/204947636-eae02c87-1995-48b9-9575-8ef925dafd47.png)
 
+
+
+## client
+
+still in work, is a react-app for connecting to the server for autocompletion while typing
 ![client](https://user-images.githubusercontent.com/76945789/203187237-31a110a3-c340-4995-a24a-8be634f8c587.png)
-![image](https://user-images.githubusercontent.com/76945789/203183599-ba4adad0-d87b-407a-94ac-d9acb2c19d08.png)
+
 
 
 
