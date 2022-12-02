@@ -11,10 +11,10 @@ from transformers import (
     TrainingArguments,
 )
 
-from ..util import SpecialTokens
+from ..util import SpecialTokens, ActivationFunctions
 
 # training module imports
-from .filesystem import CONSTANTS, DEFAULT_DEVICE, FileSystem
+from .filesystem import DEFAULT_DEVICE, FileSystem
 
 
 def tokenizer(fs: FileSystem) -> None:
@@ -39,13 +39,13 @@ def model(
     tokenizer: GPT2TokenizerFast,
     push_to_hub: bool = False,
     framework: Literal["pt"] = "pt",
-) -> None:
+) -> GPT2LMHeadModel:
     torch.cuda.empty_cache()
     model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(
         fs.base_model,
         # GPT2Config -> https://huggingface.co/transformers/v3.5.1/model_doc/gpt2.html#gpt2config
         config=GPT2Config(
-            activation_function="gelu_new",  # ["relu", "silu", "gelu", "tanh", "gelu_new"]
+            activation_function=ActivationFunctions.gelu_new,  # ["relu", "silu", "gelu", "tanh", "gelu_new"]
             layer_norm_eps=1e-05,
         ),
     ).to(  # type: ignore
@@ -62,8 +62,8 @@ def model(
         run_name=fs.model_name,
         output_dir=str(fs.model_path),
         overwrite_output_dir=True,
-        per_device_train_batch_size=CONSTANTS.BATCH_SIZE,
-        per_device_eval_batch_size=CONSTANTS.BATCH_SIZE,
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=16,
         # begin_suppress_tokens =tokenizer.all_special_ids,
         #
         num_train_epochs=1,
@@ -109,8 +109,9 @@ def model(
     # train the model
     trainer.train()
     # save model
-    model.save_pretrained(fs.model_path)
     if push_to_hub:
         model.push_to_hub(fs.model_name)
         repo_url = trainer.push_to_hub()
         print(f"Pushed model to 🤗 {repo_url}")
+
+    return model

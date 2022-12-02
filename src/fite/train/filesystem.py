@@ -1,9 +1,9 @@
 import dataclasses
+import re
 from pathlib import Path
 
 import attrs
-
-
+from datasets import Features, Value
 from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 from .._typing import (
@@ -64,6 +64,21 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
     @property
     def version(self) -> Version:
         return self.config["version"]
+
+    @property
+    def metadata_pattern(self) -> str | None:
+        pattern = self.config.get("metadata-pattern")
+        if pattern:
+            return re.escape(pattern)
+
+    def get_features(self) -> Features:
+        features = {
+            "prompt": Value("string"),
+            "completion": Value("string"),
+        }
+        if self.config.get("metadata-pattern"):
+            features["metadata"] = Value("string")
+        return Features(features)
 
 
 @dataclasses.dataclass

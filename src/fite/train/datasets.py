@@ -10,9 +10,6 @@ from datasets.dataset_dict import DatasetDict
 
 from ..util import SpecialTokens
 
-# training module imports
-from .filesystem import FileSystem
-
 __all__ = ["Dataset", "TextFile"]
 
 FEATURES = datasets.Features(
@@ -40,81 +37,86 @@ class Dataset(ArrowDataset):
         return super().__getitem__(__key)  # type: ignore
 
     @classmethod
-    def from_json(
-        cls, path: Path | str, split: float = 0.2, shuffle: bool = True
+    def from_json_lines(
+        cls,
+        path: Path | str,
+        split: float = 0.2,
+        shuffle: bool = True,
+        features: datasets.Features | None = None,
     ) -> "DatasetDict":
         """Create a dataset dictionary from a jsonl file."""
 
-        return ArrowDataset.from_json(str(path), features=FEATURES).train_test_split(  # type: ignore
-            test_size=split, shuffle=shuffle
+        return (
+            super()
+            .from_json(str(path), features=features)
+            .train_test_split(test_size=split, shuffle=shuffle)  # type: ignore
         )
 
 
 @dataclasses.dataclass
 class TextFile:
-    """A class to handle raw text files"""
+    """A class to handle raw text files
 
-    fs: FileSystem
-    split_pattern: str = r"\n+###+\n+"
-    split: float = 0.2
-    shuffle: bool = True
-    metadata_handler: Callable[["pd.Series[str]"], pd.DataFrame] | None = None
-    extract_pattern: str | None = None
-    # TODO: possible additional abstraction for the metadata handlers
+    the split_pattern should match the pattern used to segment elements in the fs.raw_text_file
+    >>> text = TextFile("hello world\nspam eggs", split_pattern=" ")
+    >>> text.to_dataframe()
+         prompt completion
+    0     hello      world
+    >>> text.to_jsonl("hello_world.jsonl")
+    >>> text.to_dataset()
+    DatasetDict({
+        train: Dataset({
+            features: ['prompt', 'completion'],
+            num_rows: 1
+        })
+        test: Dataset({
+            features: ['prompt', 'completion'],
+            num_rows: 0
+        })
+    """
 
-    @staticmethod
-    def _metar_handler(s: "pd.Series[str]") -> pd.DataFrame:
-        raise NotImplementedError
-
-    @staticmethod
-    def _taf_handler(s: "pd.Series[str]") -> pd.DataFrame:
-        return s.str.extract(
-            r"\sTX?(?P<maximum_temperature>M?\d{2})\/\d{4}Z\sTN?(?P<minimum_temperature>M?\d{2})\/\d{4}Z$"
-        )
-
-    __handlers = {"taf": _taf_handler, "metar": _metar_handler}
-
-    def extract(self, s: "pd.Series[str]") -> pd.DataFrame:
-        if not self.extract_pattern:
-            raise ValueError("escaped_extraction_pattern must be provided")
-        return s.str.extract(self.extract_pattern)
-
-    def split_lines(self, text: str) -> list[str]:
-        return re.split(self.split_pattern, text)
+    text: str
+    metadata_pattern: str | None = None
+    split_pattern: str = r"\n+#+\n+"
 
     def __post_init__(self):
-        with self.fs.raw_text_file.open("r") as f:
-            s = pd.Series(self.split_lines(f.read()), name="text").str.strip()
-        if self.metadata_handler and self.extract_pattern:
-            import warnings
+        self.__columns = ["prompt", "completion"]
+        s = pd.Series(re.split(self.split_pattern, self.text), name="text").str.strip()
 
-            warnings.warn(
-                "metadata_handler and extract_pattern are both provided. extract_pattern will be ignored."
-            )
-        metadata_handler = (
-            self.metadata_handler if self.metadata_handler else self._metadata_handlers
-        )
-
-        self._frame = pd.DataFrame(
-            s.pipe(metadata_handler).pipe(self._generate_json_lines),
-            columns=["metadata", "prompt", "completion"],
+        self.__frame = pd.DataFrame(
+            s.pipe(self._extract_metadata).pipe(self._generate_json_lines),
+            columns=self.__columns,
         ).drop_duplicates(ignore_index=True)
 
-    def _metadata_handlers(self, __s: "pd.Series[str]") -> pd.DataFrame:
-        handler = (
-            self.extract
-            if self.extract_pattern
-            else self.__handlers.get(self.fs.model_name)
-        )
-        if not handler:
-            import warnings
+    @classmethod
+    def from_file(cls, file: Path, metadata_pattern: str | None = None) -> "TextFile":
+        """
+        >>> fs = FileSystem(CONFIG)
+        >>> with fs.raw_text_file.open("w") as f:
+        ...     f.write("this is a test\\n###\\nthis is another test")
+        >>> text = TextFile.from_file(fs.raw_text_file, split_pattern="\\n###\\n")
+        >>> text.to_dataframe()
+           prompt          completion
+        0  this is a test  this is another test
+        """
 
-            warnings.warn(f"No metadata handler detected for {self.fs.model_name}")
-            return __s.to_frame()
-        return __s.pipe(handler).join(__s)
+        with file.open("r") as f:
+            return cls(
+                f.read(),
+                metadata_pattern=metadata_pattern,  # fs.config.get("metadata-pattern", None)
+            )
+
+    def _extract_metadata(self, __s: "pd.Series[str]") -> pd.DataFrame:
+        pattern = self.metadata_pattern
+        if pattern:
+            self.__columns.insert(0, "metadata")
+            return __s.str.extract(pattern).join(__s)
+        return __s.to_frame()
 
     @staticmethod
-    def _generate_json_lines(df: pd.DataFrame) -> Iterable[tuple[str, str, str]]:
+    def _generate_json_lines(
+        df: pd.DataFrame,
+    ) -> Iterable[tuple[str, str, str] | tuple[str, str]]:
         """
         iterate over the rows splitting each word, the split text is used to create the prompt and completion.
         the text is popped from each dict to create the prompt and completion.
@@ -122,25 +124,44 @@ class TextFile:
         """
         df["text"] = df.text.str.strip().str.split()
         df.columns = df.columns.str.replace("_", "-")
+        has_metadata = len(df.columns) < 1
 
-        for _, metadata in df.iterrows():
-            prompt = SpecialTokens.bos_token
-            text_list = metadata.pop("text")
-            metadata = f"{SpecialTokens.metadata}\n" + "\n".join(
-                f"{k} = {v}" for k, v in metadata.items()
-            )
+        if has_metadata:
+            for _, metadata in df.iterrows():
+                prompt = SpecialTokens.bos_token
+                text_list = metadata.pop("text")
+                metadata = f"{SpecialTokens.metadata}\n" + "\n".join(
+                    f"{k} = {v}" for k, v in metadata.items()
+                )
 
-            for i, text in enumerate(text_list):
-                prompt += f"{text} "
-                completion = " ".join(text_list[i:]) + SpecialTokens.eos_token
-                yield metadata, prompt, completion
+                for i, text in enumerate(text_list):
+                    prompt += f"{text} "
+                    completion = " ".join(text_list[i + 1 :])
+                    if completion:
+                        yield metadata, prompt, completion + SpecialTokens.eos_token
 
-    def to_dataset(
-        self, test_size: float = 0.2, shuffle: bool = True, **kwargs
+        else:
+            for text_list in df.text:
+                prompt = SpecialTokens.bos_token
+                for i, text in enumerate(text_list):
+                    prompt += f"{text} "
+                    completion = " ".join(text_list[i + 1 :])
+                    if completion:
+                        yield prompt, completion + SpecialTokens.eos_token
+
+    def to_dataframe(self) -> pd.DataFrame:
+        return self.__frame
+
+    def to_dataset_dict(
+        self,
+        test_size: float = 0.2,
+        shuffle: bool = True,
+        features: datasets.Features | None = None,
+        **kwargs,
     ) -> DatasetDict:
-        return ArrowDataset.from_pandas(self._frame).train_test_split(
-            test_size=test_size, shuffle=shuffle, **kwargs
-        )
+        return ArrowDataset.from_pandas(
+            self.to_dataframe(), features=features
+        ).train_test_split(test_size=test_size, shuffle=shuffle, **kwargs)
 
-    def save_to_disk(self) -> None:
-        self._frame.to_json(self.fs.json_lines_file, orient="records", lines=True)
+    def to_jsonl(self, path: Path) -> None:
+        self.to_dataframe().to_json(path, orient="records", lines=True)

@@ -47,9 +47,18 @@ base-model = "gpt2"
 dataset = "taf"
 version = "base1"
 model-name = "gpt2-taf-base1"
-description = "A GPT-2 model trained on TAFs."
+# if the model above was to be retrained, as a new revision, the following would be used
+# base-model = "gpt2-taf-base1"
+# dataset = "taf"
+# version = "2022-01-01"
+# model-name = "gpt2-taf-base1.2022-01-01"
+description = "A GPT-2 model trained on terminal aerodrome forecasts."
+# whole word tokens should be prefiexed with the unicode character -> \u0120
 additional-tokens = ["\u0120TAF", "\u0120BECMG", "\u0120TEMPO"]
 additional-special-tokens = ["\u0120LAST", "\u0120NO", "\u0120AMDS", "\u0120RMK", "\u0120COR"]
+# the metadata pattern should be a regex extractable pattern that will be used to extract the metadata from the dataset
+# in the TAF example we are extracting the max and minimum temperatures from the TAF
+metadata-pattern = "\\sTX?(?P<maximum_temperature>M?\\d{2})\\/\\d{4}Z\\sTN?(?P<minimum_temperature>M?\\d{2})\\/\\d{4}Z$"
 prompt-examples = [
     "TAF KBLV 020600 0200/0306 18010KT 8000 -SHRA OVC020 QNH2995INS\nTEMPO 0200/0206 5000",
     "TAF KGTB 251700Z 2517/2623 26012G20KT",
@@ -60,13 +69,15 @@ prompt-examples = [
 
 [[tool.fite.models]]
 base-model = "gpt2"
-dataset = "metar"
+dataset = "bullets"
 version = "base1"
-model-name = "gpt2-metar-base1"
-description = "A GPT-2 model trained on METARs."
-additional-tokens = ["\u0120TAF", "\u0120BECMG", "\u0120TEMPO"]
-additional-special-tokens = ["\u0120LAST", "\u0120NO", "\u0120AMDS", "\u0120RMK"]
-prompt-examples = []
+model-name = "gpt2-bullets-base1"
+description = "A GPT-2 model trained on epr bullets."
+additional-tokens = []
+additional-special-tokens = []
+prompt-examples = [
+    "- Hanchoed",
+]
 
 [tool.setuptools]
 # https://setuptools.pypa.io/en/latest/userguide/datafiles.html
