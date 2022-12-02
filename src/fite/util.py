@@ -35,6 +35,10 @@ class CONSTANTS(enum.IntEnum):
 
 @dataclasses.dataclass
 class DataclassBase(Generic[Unpack[Ts]]):
+    """
+    Generic dataclass base class that allows for easy conversion to a dictionary.
+    """
+
     def to_dict(self) -> dict[str, Union[Unpack[Ts]]]:
         return dataclasses.asdict(self)
 
@@ -98,7 +102,7 @@ class ActivationFunctions(StrEnum):
     relu = enum.auto()
     silu = enum.auto()
     gelu = enum.auto()
-    gleu_new = enum.auto()
+    gelu_new = enum.auto()
     tanh = enum.auto()
 
 

@@ -4,15 +4,10 @@ from typing import Literal
 import torch
 from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
+# project imports
 from .. import __version__ as VERSION
 from ..pipeline import HyperParameterStrategy, Pipeline
-from ..util import (
-    CONSTANTS,
-    DEFAULT_DEVICE,
-    ActionStr,
-    ResultRecord,
-    suppress_stdout,
-)
+from ..util import CONSTANTS, DEFAULT_DEVICE, ActionStr, ResultRecord, suppress_stdout
 
 # training module imports
 from . import fine_tune
@@ -83,7 +78,7 @@ def train(
     if not fs.model_path.exists():
         if VERBOSE:
             print("***** Model not found, creating model... *****")
-        fine_tune.model(fs, tokenizer, push_to_hub=False)
+        fine_tune.model(fs, tokenizer, push_to_hub=push_to_hub)
     # load the model from the saved path
     model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
     model.resize_token_embeddings(len(tokenizer))
@@ -104,7 +99,7 @@ def batch(fs: FileSystem) -> None:
         json.dump(results, f, indent=4)
 
 
-def main(fs: FileSystem) -> None:
+def main(fs: FileSystem, push_to_hub=False) -> None:
     """
     numbered bullet points in markdown format
 
@@ -143,26 +138,36 @@ def main(fs: FileSystem) -> None:
     # 2.0 -> build the dataset_dict
     if not fs.dataset_dict_path.exists():
         print("***** Dataset not found, creating dataset... *****")
+        features = fs.get_features()
         # 2.1 -> build the json lines file
         if not fs.json_lines_file.exists():
-            if not fs.raw_text_file.exists():
-                raise FileNotFoundError
-            TextFile(fs).save_to_disk()
             print("***** Json Lines not found, creating json lines... *****")
+            if fs.raw_text_file.exists():
+                TextFile.from_file(
+                    fs.raw_text_file,
+                    metadata_pattern=fs.config.get("metadata-pattern", None),
+                ).to_jsonl(fs.json_lines_file)
+            else:
+                raise FileNotFoundError
+        # 3.0 -> build the dataset_dict from the json_lines_file
+        ds = (
+            Dataset.from_json_lines(fs.json_lines_file, features=features)
+            .map(**encode("prompt"))
+            .map(**encode("completion"))
+        )
+        if "metadata" in features:
+            ds = ds.map(**encode("metadata"))
 
-        Dataset.from_json(fs.json_lines_file).map(**encode("metadata")).map(
-            **encode("prompt")
-        ).map(**encode("completion")).save_to_disk(str(fs.dataset_dict_path))
-
-    # 3.0 -> build the dataset_dict from the file system
+        ds.save_to_disk(str(fs.dataset_dict_path))
     if not fs.model_path.exists():
         print("***** Model not found, creating model... *****")
-        fine_tune.model(fs, tokenizer, push_to_hub=False)
+        fine_tune.model(fs, tokenizer, push_to_hub=push_to_hub).save_pretrained(
+            fs.model_path
+        )
 
     # load the model from the saved path
     model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
     model.resize_token_embeddings(len(tokenizer))
-    # model = fs.get_model().to(DEFAULT_DEVICE)
     # model.to(DEFAULT_DEVICE).resize_token_embeddings(len(tokenizer))
     pipe = Pipeline(
         model=model,

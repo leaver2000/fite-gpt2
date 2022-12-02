@@ -91,11 +91,14 @@ once the model has been trained you can access the TAF pipeline via the api modu
 Python 3.10.6 (main, Nov  2 2022, 18:53:38) [GCC 11.3.0] on linux
 Type "help", "copyright", "credits" or "license" for more information.
 >>> from fite.api import PipelineEngine
->>> pipeline = PipelineEngine.get_pipeline("taf")
->>> pipeline.generate("TAF KBLV 010000Z 0100/0206", "GREEDY")
-[['TAF KBLV 010000Z 0100/0206 VRB06KT 9999 BKN020 QNH3021INS', 'BECMG 0111/0112 VRB06KT 9999 BKN020 QNH3021INS', 'BECMG 0116/0117 VRB06KT 9999 BKN020 QNH3021INS TX20/0118Z TN11/0112Z']]
+>>> engine = PipelineEngine.load_from_pyproject('pyproject.toml') # load the pipeline from the pyproject.toml
+>>> engine.list_models() # view the trained models on the local machine
+['gpt2-taf-base1', 'gpt2-bullets-base1']
+>>> pipeline = engine.get_pipeline('gpt2-taf-base1') # get the pipeline for the model
+>>> pipeline.generate("TAF KBLV 010000Z 0100/0206", "GREEDY") # generate a TAF
+[['TAF KBLV 010000Z 0100/0206 VRB06KT 9999 BKN040 QNH3021INS', 'BECMG 0203/0204 VRB06KT 9999 BKN040 QNH3025INS', 'BECMG 0213/0214 VRB06KT 9999 BKN040 QNH3025INS TX19/0120Z TN09/0212Z']]
 >>> pipeline.generate("TAF KBLV 010000Z 0100/0206 8000 -TSRA", "GREEDY")
-[['TAF KBLV 010000Z 0100/0206 8000 -TSRA BKN010 OVC020 QNH2993INS', 'BECMG 0111/0112 VRB06KT 9999 NSW FEW015 FEW025 BKN040 QNH2992INS', 'BECMG 0116/0117 VRB06KT 9999 FEW200 QNH2992INS TX20/0120Z TN09/0112Z']]
+[['TAF KBLV 010000Z 0100/0206 8000 -TSRA BKN010 OVC020 QNH2990INS', 'BECMG 0203/0204 VRB03KT 6000 BR BKN010 OVC020 QNH2990INS', 'BECMG 0213/0214 VRB03KT 9999 NSW SCT015 BKN025 QNH2990INS', 'BECMG 0217/0218 VRB03KT 9999 SCT020 BKN035 QNH2990INS TX20/0120Z TN11/0212Z']]
 ```
 
 or load the model and tokenizer directly from the store via the transformers API, the pipeline provides a more convenient interface and preset configuration

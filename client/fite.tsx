@@ -37,7 +37,6 @@ function initializeState(): FITEState {
 }
 
 function useFITE(url: string): FITEActionState {
-  console.log(url);
   const [state, dispatchState] = React.useState<FITEState>(initializeState);
   const { text, start, end, suggestionsList, suggestionIndex } = state;
   const setState = React.useCallback(
@@ -59,8 +58,8 @@ function useFITE(url: string): FITEActionState {
     if (text.endsWith(" ")) {
       fetch(url, options)
         .then((response) => response.json())
-        .then((autoTaf: string[]) =>
-          setState({ suggestionsList: [autoTaf.join("\n")] })
+        .then((generatedText: string[][]) =>
+          setState({ suggestionsList: [generatedText.join("\n")] })
         );
     }
   }, [url, text, setState]);
@@ -68,14 +67,14 @@ function useFITE(url: string): FITEActionState {
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const { key, ctrlKey } = event;
-      const { selectionStart, selectionEnd } = event.target as HTMLTextAreaElement;
+      const { selectionStart, selectionEnd } =
+        event.target as HTMLTextAreaElement;
 
       if (ctrlKey && key === "ArrowUp") {
         event.preventDefault();
         setState({
           suggestionIndex: (suggestionIndex + 1) % suggestionsList.length,
         });
-        
       } else if (ctrlKey && key === "ArrowDown") {
         event.preventDefault();
         setState({
@@ -83,22 +82,18 @@ function useFITE(url: string): FITEActionState {
             (suggestionIndex + suggestionsList.length - 1) %
             suggestionsList.length,
         });
-        
-      } else if (ctrlKey && key === "Enter")  {
+      } else if (ctrlKey && key === "Enter") {
         event.preventDefault();
         setState({ text: suggestionsList[suggestionIndex] });
-        
       } else if (key === "Tab") {
         event.preventDefault();
         // update the taf value with the next word in the suggestion
         const nextWord = suggestion.split(" ")[start];
         const newText = text.slice(0, end) + nextWord + text.slice(end);
         setState({ text: newText });
-
       }
       // update the start and end values
       // setState({ start: selectionStart, end: selectionEnd });
-
     },
     [suggestionsList, suggestionIndex, suggestion, text, start, end, setState]
   );
@@ -122,7 +117,7 @@ function FITE({ apiUrl, ...props }: { apiUrl: string }) {
       the user can select an option by pressing tab or enter */
 
   const {
-    taf,
+    // taf,
     start,
     end,
     suggestion,
@@ -143,7 +138,7 @@ function FITE({ apiUrl, ...props }: { apiUrl: string }) {
         className="taf-input-layer"
         onKeyDown={handleKeyDown}
         onChange={handleChange}
-        value={taf}
+        // value={taf}
       />
     </div>
   );

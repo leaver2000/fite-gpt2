@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, TypeAlias, TypedDict
+from typing import Any, Optional, TypeAlias, TypedDict
 
 import toml
 
@@ -39,11 +39,13 @@ ModelConfig = TypedDict(
         "version": str,  # base1 | base1.2021-09-01
         "model-name": str,  # gpt2-taf-base1 | gpt2-taf-base1.2021-09-01
         "description": str,
-        "prompt-examples": list[str],
+        "metadata-pattern": Optional[str],
         "additional-tokens": list[str],
         "additional-special-tokens": list[str],
+        "prompt-examples": list[str],
     },
 )
+
 ProjectConfig = TypedDict(
     "ProjectConfig", {"root-path": str, "models": list[ModelConfig]}
 )
@@ -72,17 +74,10 @@ class PyProjectTOML(_PyProject):
     """the pyproject.toml file is the configuration file for the fite package
     PEP 621 - Storing project metadata in pyproject.toml
 
+    https://www.python.org/dev/peps/pep-0621/
 
     https://pip.pypa.io/en/stable/reference/build-system/pyproject-toml/
 
-    Args:
-        _PyProject (_type_): _description_
-
-    Raises:
-        ValueError: _description_
-
-    Returns:
-        _type_: _description_
     """
 
     @classmethod
@@ -98,6 +93,7 @@ class PyProjectTOML(_PyProject):
 
         with path.open("r") as f:
             project = toml.load(f)
+
         return cls(**project)  # type: ignore
 
     def dump(self, path: str | Path = "pyproject.toml") -> None:  # type: ignore
