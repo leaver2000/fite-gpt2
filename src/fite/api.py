@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ._enum import StrEnum
-from .pipeline import PipelineEngine, Strategys
+from .pipeline import PipelineEngine, Strategies
 
 app = FastAPI()
 app.add_middleware(
@@ -43,20 +43,20 @@ def get_model(name: str) -> dict[str, Any]:
     return engine.get_model(name).config.to_dict()
 
 
-@app.get("/strategys")
-def list_strategys() -> list[str]:
-    return Strategys.list_members()
+@app.get("/strategies")
+def list_strategies() -> list[str]:
+    return Strategies.list_members()
 
 
-@app.get("/strategys/{name}")
-def get_strategys(name: str) -> str:
-    return Strategys[name].value
+@app.get("/strategies/{name}")
+def get_strategies(name: str) -> str:
+    return Strategies[name].value
 
 
-@app.post("/generate/{pipeline}", response_model=list[list[str]])
+@app.post("/generate/{pipeline}", response_model=list[list[str]] | list[str])
 def generate(
-    prompt: Prompt | list[Prompt], pipeline: Pipelines, strategy: Strategys
-) -> list[list[str]]:
+    prompt: Prompt | list[Prompt], pipeline: Pipelines, strategy: Strategies
+) -> list[list[str]] | list[str]:
     if isinstance(prompt, list):
         text = [p.text for p in prompt]
     else:

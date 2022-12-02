@@ -168,7 +168,6 @@ def main(fs: FileSystem, push_to_hub=False) -> None:
     # load the model from the saved path
     model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
     model.resize_token_embeddings(len(tokenizer))
-    model.to(DEFAULT_DEVICE)
     # model.to(DEFAULT_DEVICE).resize_token_embeddings(len(tokenizer))
     pipe = Pipeline(
         model=model,

@@ -2,7 +2,7 @@ import dataclasses
 import random
 import re
 from pathlib import Path
-from typing import Iterable, Optional, TypeAlias, TypedDict
+from typing import Iterable, Optional, TypeAlias, TypedDict, overload
 
 import torch
 from transformers import (
@@ -24,7 +24,7 @@ from ._typing import ModelConfig, PyProjectTOML
 __all__ = [
     "Pipeline",
     "PipelineEngine",
-    "Strategys",
+    "Strategies",
     "HyperParameters",
     "HyperParameterStrategy",
 ]
@@ -193,8 +193,8 @@ class HyperParameterStrategy(DictEnum):
 
 # kinda of a hacky solution to dynamically add the strategies to the class and keep the linter happy
 # otherwise the class is represented as a type[Enum] and the linter complains about the @classmethod's
-_Strategys: type[StrEnum] = StrEnum("Strategys", HyperParameterStrategy.list_members())  # type: ignore
-Strategys: TypeAlias = _Strategys
+_Strategies: type[StrEnum] = StrEnum("Strategies", HyperParameterStrategy.list_members())  # type: ignore
+Strategies: TypeAlias = _Strategies
 
 
 class TokenIds(TypedDict):
@@ -287,14 +287,36 @@ class Pipeline(TextGenerationPipeline):
         )
         return [strip_split(text.replace("\n", "")) for text in text_list]
 
+    @overload
     def generate(
         self,
-        text: str | list[str],
-        strategy: Optional[HyperParameterStrategy | Strategys | str] = None,
+        text: str,
+        strategy: Optional[HyperParameterStrategy | Strategies | str] = None,
+        padding: PaddingStrategy | bool = True,
+        truncation: TruncationStrategy | bool = True,
+        **kwargs: Unpack[HyperParameters],
+    ) -> list[str]:
+        ...
+
+    @overload
+    def generate(
+        self,
+        text: list[str],
+        strategy: Optional[HyperParameterStrategy | Strategies | str] = None,
         padding: PaddingStrategy | bool = True,
         truncation: TruncationStrategy | bool = True,
         **kwargs: Unpack[HyperParameters],
     ) -> list[list[str]]:
+        ...
+
+    def generate(
+        self,
+        text: str | list[str],
+        strategy: Optional[HyperParameterStrategy | Strategies | str] = None,
+        padding: PaddingStrategy | bool = True,
+        truncation: TruncationStrategy | bool = True,
+        **kwargs: Unpack[HyperParameters],
+    ) -> list[list[str]] | list[str]:
         """
         The hyperparameter strategy is used to generate the hyper parameters for the model.
         they can be overwritten by kwargs.
@@ -322,8 +344,11 @@ class Pipeline(TextGenerationPipeline):
         encoding |= token_ids | strategy | kwargs
         # call the model to generate by unpacking all of the contents of the encoding
         outputs = model.generate(**encoding, max_length=self.max_length)
-        # return the decoded results
-        return self.batch_decode(outputs)
+        # decode the batch results
+        result = self.batch_decode(outputs)
+        if len(result) == 1:
+            (result,) = result
+        return result
 
     @property
     def token_ids(self) -> TokenIds:
@@ -392,10 +417,28 @@ class PipelineEngine:
     def get_model(self, name: str | StrEnum) -> GPT2LMHeadModel:
         return self.get_pipeline(name).model
 
+    @overload
+    def generate(
+        self,
+        pipeline: str | StrEnum,
+        text: list[str],
+        strategy: str | StrEnum | None = None,
+    ) -> list[list[str]]:
+        ...
+
+    @overload
+    def generate(
+        self,
+        pipeline: str | StrEnum,
+        text: str,
+        strategy: str | StrEnum | None = None,
+    ) -> list[str]:
+        ...
+
     def generate(
         self,
         pipeline: str | StrEnum,
         text: str | list[str],
         strategy: str | StrEnum | None = None,
-    ) -> list[list[str]]:
+    ) -> list[list[str]] | list[str]:
         return self.get_pipeline(pipeline).generate(text, strategy=strategy)

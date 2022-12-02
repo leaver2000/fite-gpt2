@@ -18,7 +18,7 @@ from .filesystem import DEFAULT_DEVICE, FileSystem
 
 
 def tokenizer(fs: FileSystem) -> None:
-    tokenizer = GPT2TokenizerFast.from_pretrained(
+    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(
         fs.base_model,
         num_labels=2,
         do_basic_tokenize=False,
