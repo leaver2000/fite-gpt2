@@ -12,9 +12,7 @@ enum ActionKey {
 }
 const ActionKeys = Object.values(ActionKey) as string[];
 
-// console.log(MagicKeys["ArrowUp"])
-// console.log(MagicKeys)
-// console.log(MagicKeys.UP)
+
 function FITE() {
   /* a text area with intellisense autocomplete
     that is used for writing a terminal aerodrome forecast
@@ -78,7 +76,6 @@ function FITE() {
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const { value } = e.target;
       bounce(value);
-      console.log([e.target.value, e.target.selectionStart, e.target.selectionEnd]);
       dispatchState({ textAreaValue: value });
     },
     [bounce]
