@@ -1,11 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom";
-import FITEController from "./context";
-import TextArea from "./components";
+//
+import Controller from "./context";
+import { TextAreaStack, InputLayer, AnnotationLayer } from "./components";
 import useFite from "./hooks";
 
 function MyComponents() {
-  const { dispatchState, models, strategies } = useFite();
+  //
+  const { models, strategies, dispatchState } = useFite();
 
   return (
     <div>
@@ -18,27 +20,40 @@ function MyComponents() {
           </div>
         ))}
       {/* for each strategy add a radio button */}
-      {strategies.map((strategy) => (
-        <div key={strategy}>
-          <input
-            type="radio"
-            name="strategy"
-            value={strategy}
-            onChange={(e) => dispatchState({ strategy: e.target.value })}
-          />
-          <label>{strategy}</label>
-        </div>
-      ))}
+      {strategies &&
+        strategies.map((strategy) => (
+          <div key={strategy}>
+            <input
+              type="radio"
+              name="strategy"
+              value={strategy}
+              onChange={(e) => dispatchState({ strategy: e.target.value })}
+            />
+            <label>{strategy}</label>
+          </div>
+        ))}
     </div>
+  );
+}
+
+function App() {
+  return (
+    /** the controller is a React Context.provider */
+    <Controller apiUrl="http://localhost:8000" model="gpt2-taf-base1" strategy="GREEDY">
+      {/* the context provider propagates state and callbacks via the useFite hook */}
+      <MyComponents />
+      {/* the TextAreaStack is an aligned textarea and pre elements connected to state */}
+      <TextAreaStack>
+        <AnnotationLayer />
+        <InputLayer />
+      </TextAreaStack>
+    </Controller>
   );
 }
 
 ReactDOM.render(
   <React.StrictMode>
-    <FITEController apiUrl="http://localhost:8000" model="gpt2-taf-base1" strategy="GREEDY">
-      <MyComponents />
-      <TextArea />
-    </FITEController>
+    <App />
   </React.StrictMode>,
   document.getElementById("root")
 );

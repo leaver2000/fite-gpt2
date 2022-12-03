@@ -1,20 +1,21 @@
-.taf-component-container {
+.fite-text-area-stack {
     position: absolute;
     background-color: black;
     width: 800px;
     height: 600px;
 }
 
-.taf-annotation-layer {
+.fite-annotation-layer {
     padding: 10px;
     margin: 0px;
     font-family: monospace;
     font-size: 1.2em;
     color: rgb(136, 136, 136);
     z-index: 0;
+    background-color: transparent;
 }
 
-.taf-input-layer {
+.fite-input-layer {
     padding: 10px;
     width: 100%;
     height: 100%;

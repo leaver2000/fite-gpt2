@@ -53,12 +53,12 @@ def get_strategies(name: str) -> str:
     return Strategies[name].value
 
 
-@app.post("/generate/{pipeline}", response_model=list[list[str]] | list[str])
+@app.post("/generate", response_model=list[list[str]] | list[str])
 def generate(
-    prompt: Prompt | list[Prompt], pipeline: Pipelines, strategy: Strategies
+    prompt: Prompt | list[Prompt], model: Pipelines, strategy: Strategies
 ) -> list[list[str]] | list[str]:
     if isinstance(prompt, list):
         text = [p.text for p in prompt]
     else:
         text = prompt.text
-    return engine.generate(pipeline, text, strategy=strategy)
+    return engine.generate(model, text, strategy=strategy)

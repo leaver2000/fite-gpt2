@@ -2,60 +2,63 @@ import React from "react";
 import { FITEContext } from "./context";
 import type { FITEState } from "./context";
 
-interface APIState {
-  models: string[];
-  strategies: string[];
-}
-const defaultAPIState = { models: [], strategies: [] };
-
-function useApi(apiUrl: string) {
-  const endPoints = ["strategies", "models"];
-  const options = { method: "GET" };
-  const [state, setState] = React.useState<APIState>(defaultAPIState);
-
-  React.useEffect(() => {
-    const results = endPoints.map((key) => fetch(`${apiUrl}/${key}/`, options).then((res) => res.json()));
-    Promise.all(results).then(([strategies, models]) => setState({ strategies, models }));
-  }, [apiUrl]);
-
-  const generateText = React.useCallback(
-    (text: string, model: string, strategy: string) => {
-      const url = `${apiUrl}/generate/${model}?strategy=${strategy}`;
-      const options = {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      };
-      return fetch(url, options).then((res) => res.json()) as Promise<string[]>;
-    },
-    [state]
-  );
-
-  return { generateText, ...state };
+function createUrls(baseUrl: string | URL) {
+  return {
+    models: new URL("/models", baseUrl),
+    strategies: new URL("/strategies", baseUrl),
+    generate: new URL("/generate", baseUrl),
+  };
 }
 
 function useFite() {
   const { __setState, ...state } = React.useContext(FITEContext);
-  const api = useApi(state.apiUrl);
-  // const { text, model, strategy } = state;
-  const { models, strategies } = api;
+  const urls = React.useMemo(
+    //  create a url object from the baseUrl for the various api calls
+    () => createUrls(state.apiUrl),
+    [state.apiUrl]
+  );
+  React.useEffect(() => {
+    // if the model or strategy changes, update the generate url
+    const { model, strategy } = state;
+    urls.generate.searchParams.set("model", model);
+    urls.generate.searchParams.set("strategy", strategy);
+  }, [state.model, state.strategy]);
 
   const dispatchState = React.useCallback(
     (partialState: Partial<FITEState>) =>
-      __setState((prevState: FITEState) => ({
-        ...prevState,
-        ...partialState,
-      })),
+    __setState((prevState: FITEState) => ({...prevState,...partialState})), // prettier-ignore
     [__setState]
   );
 
-  React.useEffect(() => {
-    // setting the default model and strategy`
-    if (models.length > 0) dispatchState({ model: models[0] });
-    if (strategies.length > 0) dispatchState({ strategy: strategies[0] });
-  }, [models, strategies]);
+  const generateText = React.useCallback(
+    (text: string, model: string, strategy: string) => {
+      const payload = {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      };
 
-  return { dispatchState, ...api, ...state };
+      return fetch(urls.generate, payload).then((res) => res.json()) as Promise<string[]>;
+    },
+    [urls.generate]
+  );
+  React.useEffect(() => {
+    const options = { method: "GET" };
+    const results = [urls.strategies, urls.models].map((url) =>
+      fetch(url, options).then((res) => res.json())
+    ) as Promise<string[]>[];
+    //
+    Promise.all(results).then(([strategies, models]) => dispatchState({ strategies, models }));
+  }, [urls.models, urls.strategies]);
+
+  React.useEffect(() => {
+    const { models, strategies } = state;
+    // setting the default model and strategy`
+    if (models && models.length > 0) dispatchState({ model: models[0] });
+    if (strategies && strategies.length > 0) dispatchState({ strategy: strategies[0] });
+  }, [state.models, state.strategies]);
+
+  return { dispatchState, generateText, ...state };
 }
 
 export default useFite;
