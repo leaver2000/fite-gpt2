@@ -5,7 +5,7 @@ import TextArea from "./components";
 import useFite from "./hooks";
 
 function MyComponents() {
-  const { dispatchState, apiUrl, models, strategies, ...state } = useFite();
+  const { dispatchState, models, strategies } = useFite();
 
   return (
     <div>
@@ -24,7 +24,7 @@ function MyComponents() {
             type="radio"
             name="strategy"
             value={strategy}
-            onChange={(e) => dispatchState({ ["strategy"]: e.target.value })}
+            onChange={(e) => dispatchState({ strategy: e.target.value })}
           />
           <label>{strategy}</label>
         </div>
