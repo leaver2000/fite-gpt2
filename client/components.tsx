@@ -59,9 +59,7 @@ export function InputLayer(): JSX.Element {
   const debounceCallback = React.useCallback(
     debounce(
       (text: string) => {
-        generateText(text, state.model, state.strategy).then((completion) =>
-          dispatchState({ textCompletion: completion.join("\n") })
-        );
+        generateText(text).then((completion) => dispatchState({ textCompletion: completion.join("\n") }));
       },
       500,
       { leading: false, trailing: true }

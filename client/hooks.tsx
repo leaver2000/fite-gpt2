@@ -10,28 +10,43 @@ function createUrls(baseUrl: string | URL) {
   };
 }
 
+function updateSearchParams(generateURL: URL, { model, strategy }: FITEState) {
+  generateURL.searchParams.set("model", model);
+  generateURL.searchParams.set("strategy", strategy);
+}
+
 function useFite() {
   const { __setState, ...state } = React.useContext(FITEContext);
-  const urls = React.useMemo(
-    //  create a url object from the baseUrl for the various api calls
-    () => createUrls(state.apiUrl),
-    [state.apiUrl]
-  );
+  //  create a url object from the baseUrl for the various api calls
+  const urls = React.useMemo(() => createUrls(state.apiUrl), [state.apiUrl]);
+  // if the model or strategy changes, update the generate url
+  React.useEffect(() => updateSearchParams(urls.generate, state), [urls.generate, state.model, state.strategy]);
+  // unlike in the current application for this effect to occur more than once
+  // the model api and or strategy api would have to change
   React.useEffect(() => {
-    // if the model or strategy changes, update the generate url
-    const { model, strategy } = state;
-    urls.generate.searchParams.set("model", model);
-    urls.generate.searchParams.set("strategy", strategy);
-  }, [state.model, state.strategy]);
-
+    const options = { method: "GET" };
+    const results = [urls.strategies, urls.models].map((url) =>
+      fetch(url, options).then((res) => res.json())
+    ) as Promise<string[]>[];
+    //
+    Promise.all(results).then(([strategies, models]) => dispatchState({ strategies, models }));
+  }, [urls.models, urls.strategies]);
+  // settings a default value for the model and strategy
+  React.useEffect(() => {
+    const { models, strategies } = state;
+    // setting the default model and strategy if one is not set
+    if (!state.model && models && models.length > 0) dispatchState({ model: models[0] });
+    if (!state.strategy && strategies && strategies.length > 0) dispatchState({ strategy: strategies[0] });
+  }, [state.models, state.strategies]);
+  // the dispatch function for the context
   const dispatchState = React.useCallback(
     (partialState: Partial<FITEState>) =>
     __setState((prevState: FITEState) => ({...prevState,...partialState})), // prettier-ignore
     [__setState]
   );
-
+  // post the textArea value to the generate url
   const generateText = React.useCallback(
-    (text: string, model: string, strategy: string) => {
+    (text: string) => {
       const payload = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -42,21 +57,6 @@ function useFite() {
     },
     [urls.generate]
   );
-  React.useEffect(() => {
-    const options = { method: "GET" };
-    const results = [urls.strategies, urls.models].map((url) =>
-      fetch(url, options).then((res) => res.json())
-    ) as Promise<string[]>[];
-    //
-    Promise.all(results).then(([strategies, models]) => dispatchState({ strategies, models }));
-  }, [urls.models, urls.strategies]);
-
-  React.useEffect(() => {
-    const { models, strategies } = state;
-    // setting the default model and strategy`
-    if (models && models.length > 0) dispatchState({ model: models[0] });
-    if (strategies && strategies.length > 0) dispatchState({ strategy: strategies[0] });
-  }, [state.models, state.strategies]);
 
   return { dispatchState, generateText, ...state };
 }
