@@ -5,7 +5,7 @@
         "api": "uvicorn src.fite.api:app --reload --reload-dir src/ --port 8000",
         "test": "web-test-runner \"client/**/*.test.tsx\"",
         "kill": "fuser -k 8000/tcp && fuser -k 8080/tcp",
-        "format": "prettier --write \"client/**/*.{js,jsx,ts,tsx}\" --tab-width 2 --print-width 120",
+        "format": "prettier --write \"client/**/*.{js,jsx,ts,tsx}\" --tab-width 2 --print-width 120 --use-tabs true",
         "lint": "prettier --check \"client/**/*.{js,jsx,ts,tsx}\" --tab-width 2 --print-width 120"
     },
     "dependencies": {
