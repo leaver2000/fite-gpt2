@@ -1,5 +1,9 @@
 # Forecast integrated TAF environment (FITE)
 
+![fite-1](https://user-images.githubusercontent.com/76945789/205638167-53641ec1-b81e-429d-869b-6f18993fe819.gif)
+
+![fite-2](https://user-images.githubusercontent.com/76945789/205639781-7d91ad3f-847f-4ccf-8a76-07dd635bb833.gif)
+
 ## description
 
 *GPT-2 is a large transformer-based language model with 1.5 billion parameters, trained on a dataset[1] of 8 million web pages. GPT-2 is trained with a simple objective: predict the next word, given all of the previous words within some text. The diversity of the dataset causes this simple goal to contain naturally occurring demonstrations of many tasks across diverse domains. GPT-2 is a direct scale-up of GPT, with more than 10X the parameters and trained on more than 10X the amount of data.*
