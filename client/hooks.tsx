@@ -49,7 +49,7 @@ function useFITE() {
     );
   }, [urls.models, urls.strategies]);
   // the dispatch function for the context
-  const dispatchState = React.useCallback<(partialState: Partial<FITEState>) => void>(
+  const setPartialState = React.useCallback<(partialState: Partial<FITEState>) => void>(
     (partialState) => __setState((prevState) => ({ ...prevState, ...partialState })),
     [__setState]
   );
@@ -70,7 +70,7 @@ function useFITE() {
     [urls.generate]
   );
 
-  return { dispatchState, generateText, ...state };
+  return { setPartialState, generateText, ...state };
 }
 
 export default useFITE;

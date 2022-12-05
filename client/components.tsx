@@ -35,9 +35,12 @@ function prepareTextAreaValue(textAreaValue: string): string {
 type InputLayerProps = { debounceWaitTime?: number; toUpperCase?: boolean };
 
 /**
- * the InputLayer component wraps a HTMLTextAreaElement
+ * The TextInputLayer component wraps a HTMLTextAreaElement
+ * with specialized handlers for onChange and onKeyDown events
+ * @param {number} debounceWaitTime - the time in milliseconds to wait before calling the onChange handler
+ * @param {boolean} toUpperCase - if true, the text will be converted to uppercase
  */
-export function InputLayer({ debounceWaitTime = 500, toUpperCase = true }: InputLayerProps): JSX.Element {
+export function TextInputLayer({ debounceWaitTime = 500, toUpperCase = true }: InputLayerProps): JSX.Element {
   const fite = useFITE();
 
   const handelTextAreaKeyDown = React.useCallback<(e: React.KeyboardEvent<HTMLTextAreaElement>) => void>(
@@ -64,7 +67,7 @@ export function InputLayer({ debounceWaitTime = 500, toUpperCase = true }: Input
       else if (key === ACTIONS.ENTER && !ctrlKey) {
         textCompletion = textCompletion.substring(0, textCompletion.length).split("\n")[0] + "\n";
       } else throw new Error(`key ${key} is not a valid ${ACTIONS}; refer to ACTIONS`);
-      fite.dispatchState({ textAreaValue: textPrompt + textCompletion });
+      fite.setPartialState({ textAreaValue: textPrompt + textCompletion });
     },
     [fite.textCompletion]
   );
@@ -91,14 +94,14 @@ export function InputLayer({ debounceWaitTime = 500, toUpperCase = true }: Input
             break;
           }
           // update the textCompletion with the current textPrompt + the number of dots with a max of 3
-          fite.dispatchState({ textCompletion: textPrompt.trim() + ".".repeat(count % 4) });
+          fite.setPartialState({ textCompletion: textPrompt.trim() + ".".repeat(count % 4) });
           // sleep for 250ms before dispatching the next textCompletion
           await new Promise((resolve) => setTimeout(resolve, 250));
           // increment count
           count++;
         }
         // dispatch the textCompletion with the results
-        fite.dispatchState({ textCompletion: await results });
+        fite.setPartialState({ textCompletion: await results });
       },
       debounceWaitTime,
       { leading: false, trailing: true }
@@ -111,16 +114,16 @@ export function InputLayer({ debounceWaitTime = 500, toUpperCase = true }: Input
       const textAreaValue = prepareTextAreaValue(toUpperCase ? value.toUpperCase() : value);
       // if the textCompletion is empty or if the start of textCompletion is different from the textAreaValue
       if (!fite.textCompletion || !fite.textCompletion.startsWith(textAreaValue)) {
-        fite.dispatchState({ textCompletion: textAreaValue });
+        fite.setPartialState({ textCompletion: textAreaValue });
         // make a call to the api using the lodash.debounce callback to dispatch the textCompletion
         debouncedTextCompletionDispatch(textAreaValue);
       }
       // always dispatch the textAreaValue
-      fite.dispatchState({ textAreaValue });
+      fite.setPartialState({ textAreaValue });
     },
     [fite.textCompletion, fite.textAreaValue, debouncedTextCompletionDispatch, toUpperCase]
   );
-
+  // return the InputLayer
   return (
     <textarea
       className={ClassNames.inputLayer}
@@ -132,6 +135,7 @@ export function InputLayer({ debounceWaitTime = 500, toUpperCase = true }: Input
 }
 
 export function AnnotationLayer({ children }: { children: React.ReactNode }): JSX.Element {
+  // return the AnnotationLayer
   return (
     <div style={{ position: "absolute" }}>
       <pre className={ClassNames.annotationLayer}>{children}</pre>
@@ -139,7 +143,7 @@ export function AnnotationLayer({ children }: { children: React.ReactNode }): JS
   );
 }
 
-export function AutoCompletionLayer(): JSX.Element {
+export function TextCompletionLayer(): JSX.Element {
   const fite = useFITE();
   return <AnnotationLayer>{fite.textCompletion}</AnnotationLayer>;
 }
@@ -158,13 +162,13 @@ export function TextAreaStack({ children, reRenderOnStrategyChange = true }: Tex
     if (!fite.textAreaValue) return void 0;
     fite
       .generateText(fite.textAreaValue)
-      .then((completion) => fite.dispatchState({ textCompletion: completion.join("\n") }));
+      .then((completion) => fite.setPartialState({ textCompletion: completion.join("\n") }));
   }, [fite.textAreaValue]);
-
+  // return the TextAreaStack
   return <div className={ClassNames.textAreaStack}>{children}</div>;
 }
 
-export default function () {
+export default function (): JSX.Element {
   /* a text area with intellisense autocomplete
     that is used for writing a terminal aerodrome forecast
     the intellisense is based the TAF_STRING above
@@ -173,8 +177,8 @@ export default function () {
 
   return (
     <TextAreaStack>
-      <AutoCompletionLayer />
-      <InputLayer />
+      <TextCompletionLayer />
+      <TextInputLayer />
     </TextAreaStack>
   );
 }
