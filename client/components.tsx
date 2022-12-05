@@ -120,7 +120,7 @@ export function InputLayer({ debounceWaitTime = 500, toUpperCase = true }: Input
     },
     [fite.textCompletion, fite.textAreaValue, debouncedTextCompletionDispatch, toUpperCase]
   );
-
+  // return the InputLayer
   return (
     <textarea
       className={ClassNames.inputLayer}
@@ -132,6 +132,7 @@ export function InputLayer({ debounceWaitTime = 500, toUpperCase = true }: Input
 }
 
 export function AnnotationLayer({ children }: { children: React.ReactNode }): JSX.Element {
+  // return the AnnotationLayer
   return (
     <div style={{ position: "absolute" }}>
       <pre className={ClassNames.annotationLayer}>{children}</pre>
@@ -160,7 +161,7 @@ export function TextAreaStack({ children, reRenderOnStrategyChange = true }: Tex
       .generateText(fite.textAreaValue)
       .then((completion) => fite.dispatchState({ textCompletion: completion.join("\n") }));
   }, [fite.textAreaValue]);
-
+  // return the TextAreaStack
   return <div className={ClassNames.textAreaStack}>{children}</div>;
 }
 
@@ -171,7 +172,7 @@ export default function () {
     the user can cycle through the intellisense options with the up and down arrow keys
     the user can select an option by pressing tab or enter */
 
-  return (
+    return (
     <TextAreaStack>
       <AutoCompletionLayer />
       <InputLayer />
