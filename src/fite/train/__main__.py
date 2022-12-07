@@ -129,9 +129,9 @@ def main(fs: FileSystem, push_to_hub=False) -> None:
         "num_proc": CONSTANTS.NUM_PROC,
     }
 
-    def encode(key: Literal["metadata", "prompt", "completion"]):
+    def encode(key: Literal["prompt", "completion"]):
         encoding_kwargs.update(
-            function=lambda batch: tokenizer(batch[key], truncation=True, padding=True)
+            function=lambda batch: tokenizer(batch[key], truncation=True, padding=False)
         )
         return encoding_kwargs
 
@@ -155,9 +155,6 @@ def main(fs: FileSystem, push_to_hub=False) -> None:
             .map(**encode("prompt"))
             .map(**encode("completion"))
         )
-        if "metadata" in features:
-            ds = ds.map(**encode("metadata"))
-
         ds.save_to_disk(str(fs.dataset_dict_path))
     if not fs.model_path.exists():
         print("***** Model not found, creating model... *****")
@@ -165,21 +162,6 @@ def main(fs: FileSystem, push_to_hub=False) -> None:
             fs.model_path
         )
 
-    # load the model from the saved path
-    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
-    model.resize_token_embeddings(len(tokenizer))
-    # model.to(DEFAULT_DEVICE).resize_token_embeddings(len(tokenizer))
-    pipe = Pipeline(
-        model=model,
-        tokenizer=tokenizer,
-        device=DEFAULT_DEVICE,
-        max_length=CONSTANTS.MAX_LENGTH,
-        num_return_sequences=1,
-    )
-    result = pipe.generate(
-        fs.config["prompt-examples"], strategy=HyperParameterStrategy.GREEDY
-    )
-    print(result)
 
 
 if __name__ == "__main__":

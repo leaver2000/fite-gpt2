@@ -87,13 +87,13 @@ class TokenEnum(RegexEnum):
 class SpecialTokens(TokenEnum):
     """Special tokens that can be added to a tokenizer"""
 
-    bos_token = "[bos]"
-    eos_token = "[eos]"
-    pad_token = "[pad]"
+    bos_token = "<|bos|>"
+    eos_token = "<|eos|>"
+    # pad_token = "[pad]"
     # cls_token = "<|cls|>"
-    # pad_token = "<|pad|>"
-    # unk_token = "<|unk|>"
-    metadata = "[metadata]"
+    pad_token = "<|pad|>"
+    # unk_token = "<|unk|>" # may be useful to mask missing header tokens
+    # metadata = "[metadata]"
 
 
 class ActivationFunctions(StrEnum):
