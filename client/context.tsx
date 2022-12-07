@@ -1,11 +1,14 @@
 import React from "react";
+
+export const TAF_HEADER = "TAF ";
+export const TAF_HEADER_LENGTH = TAF_HEADER.length;
+
 interface FITEProps {
   apiUrl: string | URL;
   model: string;
   strategy: string;
-  textAreaValue?: string;
-  textCompletion?: string;
 }
+
 export interface FITEState extends FITEProps {
   modelOptions?: string[];
   strategyOptions?: string[];
@@ -18,8 +21,8 @@ const DEFAULT_STATE = {
   apiUrl: "http://localhost:8000",
   model: "gpt2-taf-base1",
   strategy: "GREEDY",
-  textAreaValue: "",
-  textCompletion: "",
+  textAreaValue: TAF_HEADER,
+  textCompletion: TAF_HEADER,
 } as FITEState;
 
 interface ContextState extends FITEState {

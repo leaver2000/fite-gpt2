@@ -14,6 +14,21 @@ function updateSearchParams(generateURL: URL, { model, strategy }: FITEState) {
   generateURL.searchParams.set("model", model);
   generateURL.searchParams.set("strategy", strategy);
 }
+// the metadata interface is used to pass additional information to the api
+// prefixing the TAF with temperature information gives context to the model
+interface MetaData {
+  TX: number;
+  TN: number;
+  issueDatetime: Date;
+}
+
+function packagePayload(text: string, metadata: MetaData) {
+  return {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, metadata }),
+  };
+}
 
 function useFITE() {
   const { __setState, ...state } = React.useContext(FITEContext);
@@ -58,11 +73,12 @@ function useFITE() {
     async (text) => {
       // if some empty text is passed, return an empty array
       if (text.trim().length === 0) return [];
-      const payload = {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      };
+      const payload = packagePayload(
+        text,
+        // TODO: add metadata to the payload
+        // max and min temperatures could be set by the forecaster
+        { TX: 0, TN: 0, issueDatetime: new Date() }
+      );
 
       const res = await fetch(urls.generate, payload);
       return await res.json();

@@ -51,9 +51,11 @@ function App() {
   return (
     <div style={{ height: "100vh", width: "100vw" }}>
       {/*
-       the Controller is a Context.Provider that propagates via the useFITE hook 
-       the props are passed to the Controller and then to the Context.Provider
-       if no props are passed, the Controller will use the default props
+        the Controller is a Context.Provider that propagates state without the need 
+        for prop drilling. All of the child components have access to the Context via 
+        the useFITE hook
+
+        if no props are passed to the the Controller default props are used
        */}
       <Controller apiUrl="http://localhost:8000" model="gpt2-taf-base1" strategy="GREEDY">
         {/* a simple navbar to cycle the stateful api options */}

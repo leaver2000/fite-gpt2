@@ -1,10 +1,8 @@
 [build-system]
-
 requires = [
     "setuptools>=58.2.0", 
     "wheel",
 ]   
-
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -39,6 +37,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Topic :: Utilities",
 ]
+
 [tool.fite]
 root-path = "store/"
 
@@ -103,6 +102,7 @@ prompt-examples = [
     "TAF [TX02 TNM04] AMD KBLV 161934Z 1619/1722 28012G20KT 9999 SCT030 BKN050 BKN080",
     "TAF [TXM09 TNM13] PAFB 151500Z 1515/1621 VRB03KT 8000 BR OVC006"
 ]
+
 [[tool.fite.models]]
 base-model = "gpt2"
 dataset = "bullets"
@@ -118,7 +118,9 @@ prompt-examples = [
 [tool.setuptools]
 # https://setuptools.pypa.io/en/latest/userguide/datafiles.html
 include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["src","store/models/gpt2-taf-0.1.0"]
+
 [tool.setuptools.package-data]
 mypkg = ["*"]

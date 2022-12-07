@@ -1,8 +1,11 @@
 import React from "react";
 import debounce from "lodash.debounce";
 import useFITE from "./hooks";
+import { TAF_HEADER, TAF_HEADER_LENGTH } from "./context";
 import "./style.css";
-
+/**
+ * 
+ */
 const ACTIONS = {
   TAB: "Tab",
   ENTER: "Enter",
@@ -12,13 +15,19 @@ const ACTIONS = {
       .includes(key);
   } as (key: string) => boolean,
 } as const;
-
+/**
+ * 
+ */
 enum ClassNames {
   inputLayer = "fite-input-layer",
   annotationLayer = "fite-annotation-layer",
   textAreaStack = "fite-text-area-stack",
 }
-
+/**
+ * 
+ * @param {string} textAreaValue 
+ * @returns 
+ */
 function prepareTextAreaValue(textAreaValue: string): string {
   // split each line into an array -> reduce the text -> join the text
   return textAreaValue
@@ -32,47 +41,69 @@ function prepareTextAreaValue(textAreaValue: string): string {
     .join("\n");
 }
 
-type InputLayerProps = { debounceWaitTime?: number; toUpperCase?: boolean };
-
+type InputLayerProps = { debounceWaitTime?: number; toUpperCase?: boolean; textValueHeader?: string };
 /**
  * The TextInputLayer component wraps a HTMLTextAreaElement
  * with specialized handlers for onChange and onKeyDown events
  * @param {number} debounceWaitTime - the time in milliseconds to wait before calling the onChange handler
  * @param {boolean} toUpperCase - if true, the text will be converted to uppercase
  */
-export function TextInputLayer({ debounceWaitTime = 500, toUpperCase = true }: InputLayerProps): JSX.Element {
+export function TextInputLayer({
+  debounceWaitTime = 500,
+  toUpperCase = true,
+}: InputLayerProps): JSX.Element {
   const fite = useFITE();
-
+  // the textAreaRef is used to set the cursor position
+  const textAreaRef = React.useRef<HTMLTextAreaElement>(null);
   const handelTextAreaKeyDown = React.useCallback<(e: React.KeyboardEvent<HTMLTextAreaElement>) => void>(
     // event handler for the text area manages the intellisense options and the text area value
     (event) => {
-      // continue if key not in ActionKeys or textCompletion is undefined
-      if (!ACTIONS.contain(event.key)) return void 0;
-      // prevent default action for ACTION keys
-      event.preventDefault();
       // unpack the HTMLTextAreaElementEvent
-      const { key, ctrlKey, currentTarget: { value: textPrompt } } = event; // prettier-ignore
+      const { key, ctrlKey, currentTarget: { value: textPrompt, selectionStart } } = event; // prettier-ignore
+      // prevent the user from deleting the header
+      if (selectionStart < TAF_HEADER_LENGTH) {
+        event.preventDefault();
+        // set the cursor position to the end of the textPrompt
+        textAreaRef.current!.selectionStart = textPrompt.length + 1;
+        textAreaRef.current!.selectionEnd = textPrompt.length + 1;
+        // set the textAreaValue to the textPrompt + a space
+        fite.setPartialState({ textAreaValue: textPrompt.trim() + " " });
+        return;
+      } // if the key is not in the ACTIONS object, continue with the event
+      else if (!ACTIONS.contain(event.key)) return;
+      // prevent the default action for the key
+      event.preventDefault();
       // slice the completion by the length of the prompt to get just the new generated text
       let textCompletion = fite.textCompletion.slice(textPrompt.length);
-      // logic ...
+      /* 
+      ACTION LOGIC
+      these are the keyboard bindings for the textArea, most involve 
+      updating the textAreaValue with some portion of the textCompletion
+      - [ TAB ] -> update the targetValue with the first word of the textCompletion
+      - [ CTRL + ENTER ] -> full textCompletion
+      - [ ENTER ] -> first full line of textCompletion
+      */
       // [ TAB ] -> update the targetValue with the first word of the textCompletion
       if (key === ACTIONS.TAB) {
         // the index of the first space in the textCompletion that is not the first character
         const indexOfEndOfFirstWord = textCompletion.indexOf(" ", textCompletion.startsWith(" ") ? 1 : 0);
-        // textAreaValue += the first whole word in the textCompletion
+        // first whole word in the textCompletion
         textCompletion = textCompletion.substring(0, indexOfEndOfFirstWord);
       } // [ CTRL + ENTER ] -> full textCompletion
       else if (key === ACTIONS.ENTER && ctrlKey) void 0;
       // [ ENTER ] -> first full line of textCompletion
       else if (key === ACTIONS.ENTER && !ctrlKey) {
         textCompletion = textCompletion.substring(0, textCompletion.length).split("\n")[0] + "\n";
+        // if the key is not in the ACTIONS object, throw an error this would be a bug
       } else throw new Error(`key ${key} is not a valid ${ACTIONS}; refer to ACTIONS`);
+      // dispatch PartialState
       fite.setPartialState({ textAreaValue: textPrompt + textCompletion });
     },
-    [fite.textCompletion]
+    [fite.textCompletion, textAreaRef]
   );
-  // debounce the generateText function to prevent spamming the server
+
   const debouncedTextCompletionDispatch = React.useCallback(
+    // debounce the generateText function to prevent spamming the server
     debounce(
       async (textPrompt: string) => {
         // setting initial pending and count state
@@ -113,6 +144,7 @@ export function TextInputLayer({ debounceWaitTime = 500, toUpperCase = true }: I
     ({ target: { value } }: React.ChangeEvent<HTMLTextAreaElement>) => {
       const textAreaValue = prepareTextAreaValue(toUpperCase ? value.toUpperCase() : value);
       // if the textCompletion is empty or if the start of textCompletion is different from the textAreaValue
+      if (fite.textCompletion === TAF_HEADER) return;
       if (!fite.textCompletion || !fite.textCompletion.startsWith(textAreaValue)) {
         fite.setPartialState({ textCompletion: textAreaValue });
         // make a call to the api using the lodash.debounce callback to dispatch the textCompletion
@@ -126,6 +158,7 @@ export function TextInputLayer({ debounceWaitTime = 500, toUpperCase = true }: I
   // return the InputLayer
   return (
     <textarea
+      ref={textAreaRef}
       className={ClassNames.inputLayer}
       onKeyDown={handelTextAreaKeyDown}
       onChange={handleOnTextAreaChange}
