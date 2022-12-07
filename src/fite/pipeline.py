@@ -138,7 +138,7 @@ class HyperParameterStrategy(DictEnum):
     highest scoring beams that should be returned.
     Make sure though that num_return_sequences <= num_beams!
     """
-    BEAM_SEARCH_N_GRAM_5 = BEAM_SEARCH_N_GRAM | HyperParameters(num_return_sequences=5)
+    # BEAM_SEARCH_N_GRAM_5 = BEAM_SEARCH_N_GRAM | HyperParameters(num_return_sequences=5)
 
     # --- SAMPLING ---
     # In its most basic form, sampling means randomly picking the next word
