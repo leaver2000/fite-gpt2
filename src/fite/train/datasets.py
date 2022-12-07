@@ -80,12 +80,11 @@ class TextFile:
     split_pattern: str = r"\n+#+\n+"
 
     def __post_init__(self):
-        self.__columns = ["prompt", "completion"]
         s = pd.Series(re.split(self.split_pattern, self.text), name="text").str.strip()
 
         self.__frame = pd.DataFrame(
             s.pipe(self._extract_metadata).pipe(self._generate_json_lines),
-            columns=self.__columns,
+            columns=["prompt", "completion"],
         ).drop_duplicates(ignore_index=True)
 
     @classmethod
@@ -107,11 +106,10 @@ class TextFile:
             )
 
     def _extract_metadata(self, __s: "pd.Series[str]") -> pd.DataFrame:
-        pattern = self.metadata_pattern
-        if pattern:
-            self.__columns.insert(0, "metadata")
-            return __s.str.extract(pattern).join(__s)
-        return __s.to_frame()
+        # pattern = self.metadata_pattern
+        # TODO: use the metadata pattern to extract metadata from the text
+        return __s.str.extract(r"(?:(TXM?\d{2}).+(TNM?\d{2}))").join(__s)
+
 
     @staticmethod
     def _generate_json_lines(
@@ -122,32 +120,23 @@ class TextFile:
         the text is popped from each dict to create the prompt and completion.
         the remaining dict is used as the metadata.
         """
-        df["text"] = df.text.str.strip().str.split()
-        df.columns = df.columns.str.replace("_", "-")
-        has_metadata = len(df.columns) < 1
+        template = "TAF [{header}] {text}"
+        head, *_ = template.split("[")
+        header = df.drop(columns="text").apply(" ".join, axis=1).rename("header")
 
-        if has_metadata:
-            for _, metadata in df.iterrows():
-                prompt = SpecialTokens.bos_token
-                text_list = metadata.pop("text")
-                metadata = f"{SpecialTokens.metadata}\n" + "\n".join(
-                    f"{k} = {v}" for k, v in metadata.items()
-                )
-
-                for i, text in enumerate(text_list):
-                    prompt += f"{text} "
-                    completion = " ".join(text_list[i + 1 :])
-                    if completion:
-                        yield metadata, prompt, completion + SpecialTokens.eos_token
-
-        else:
-            for text_list in df.text:
-                prompt = SpecialTokens.bos_token
-                for i, text in enumerate(text_list):
-                    prompt += f"{text} "
-                    completion = " ".join(text_list[i + 1 :])
-                    if completion:
-                        yield prompt, completion + SpecialTokens.eos_token
+        text = (
+            df.text.str.replace(head, "")
+            .to_frame()
+            .join(header)
+            .apply(lambda s: template.format(**s), axis=1)
+        )
+        for text_list in text.str.strip().str.split():
+            prompt = SpecialTokens.bos_token
+            for i, text in enumerate(text_list):
+                prompt += f"{text} "
+                completion = " ".join(text_list[i + 1 :])
+                if completion:
+                    yield prompt, completion + SpecialTokens.eos_token
 
     def to_dataframe(self) -> pd.DataFrame:
         return self.__frame
