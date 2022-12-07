@@ -11,7 +11,7 @@ from transformers import (
     TrainingArguments,
 )
 
-from ..util import SpecialTokens, ActivationFunctions
+from ..util import SpecialTokens, ActivationFunctions, CONSTANTS
 
 # training module imports
 from .filesystem import DEFAULT_DEVICE, FileSystem
@@ -62,10 +62,9 @@ def model(
         run_name=fs.model_name,
         output_dir=str(fs.model_path),
         overwrite_output_dir=True,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
+        per_device_train_batch_size=CONSTANTS.BATCH_SIZE,
+        per_device_eval_batch_size=CONSTANTS.BATCH_SIZE,
         # begin_suppress_tokens =tokenizer.all_special_ids,
-        #
         num_train_epochs=1,
         warmup_steps=500,
         weight_decay=0.01,
