@@ -31,7 +31,7 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
     config: ModelConfig = attrs.field(on_setattr=attrs.setters.frozen)
 
     def get_model(self, **kwargs) -> GPT2LMHeadModel:
-        return GPT2LMHeadModel.from_pretrained(self.model_path, **kwargs).to(DEFAULT_DEVICE)  # type: ignore
+        return GPT2LMHeadModel.from_pretrained(self.model_path, **kwargs)  # type: ignore
 
     def get_tokenizer(self, **kwargs) -> GPT2TokenizerFast:
         # You're using a GPT2TokenizerFast tokenizer.
@@ -76,8 +76,8 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
             "prompt": Value("string"),
             "completion": Value("string"),
         }
-        if self.config.get("metadata-pattern"):
-            features["metadata"] = Value("string")
+        # if self.config.get("metadata-pattern"):
+        #     features["metadata"] = Value("string")
         return Features(features)
 
 
