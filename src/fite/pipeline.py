@@ -151,8 +151,8 @@ class HyperParameterStrategy(DictEnum):
     TEMP_105 = _BASE_SAMPLE | HyperParameters(temperature=1.05)
     TEMP_125 = _BASE_SAMPLE | HyperParameters(temperature=1.25)
     TEMP_150 = _BASE_SAMPLE | HyperParameters(temperature=1.5)
-    TEMP_175 = _BASE_SAMPLE | HyperParameters(temperature=1.75)
-    TEMP_200 = _BASE_SAMPLE | HyperParameters(temperature=2.0)
+    # TEMP_175 = _BASE_SAMPLE | HyperParameters(temperature=1.75) -> gibberish
+    # TEMP_200 = _BASE_SAMPLE | HyperParameters(temperature=2.0) -> gibberish
 
     # --- Top-K Sampling ---
     # Top-K sampling is a more sophisticated version of sampling where the
@@ -161,9 +161,9 @@ class HyperParameterStrategy(DictEnum):
     TOP_K5 = _BASE_SAMPLE | HyperParameters(top_k=5)
     TOP_K50 = _BASE_SAMPLE | HyperParameters(top_k=50)
     TOP_K100 = _BASE_SAMPLE | HyperParameters(top_k=100)
-    TOP_K50_T125 = TOP_K50 | TEMP_125
-    TOP_K150_T150 = TOP_K50 | TEMP_150
-    TOP_K175_T175 = TOP_K50 | TEMP_175
+    # TOP_K50_T125 = TOP_K50 | TEMP_125 -> gibberish
+    # TOP_K150_T150 = TOP_K50 | TEMP_150 -> gibberish
+    # TOP_K175_T175 = TOP_K50 | TEMP_175 -> gibberish
 
     # --- Top-p (nucleus) sampling ---
     #  https://huggingface.co/blog/how-to-generate#top-p-nucleus-sampling
@@ -179,16 +179,16 @@ class HyperParameterStrategy(DictEnum):
     TOP_P96 = _BASE_SAMPLE | HyperParameters(top_p=0.96)
     TOP_P98 = _BASE_SAMPLE | HyperParameters(top_p=0.98)
     TOP_P99 = _BASE_SAMPLE | HyperParameters(top_p=0.99)
-    TOP_P200 = _BASE_SAMPLE | HyperParameters(top_p=2.0)
+    # TOP_P200 = _BASE_SAMPLE | HyperParameters(top_p=2.0) -> gibberish
     TOP_P92_T125 = TOP_P92 | TEMP_125
     TOP_P92_T150 = TOP_P92 | TEMP_150
-    TOP_P92_T175 = TOP_P92 | TEMP_175
+    # TOP_P92_T175 = TOP_P92 | TEMP_175 -> gibberish
 
     # --- Top-K + Top-p (nucleus) sampling ---
     TOP_KP = TOP_K50 | TOP_P92
     TOP_KP_T125 = TOP_KP | TEMP_125
     TOP_KP_T150 = TOP_KP | TEMP_150
-    TOP_KP_T175 = TOP_KP | TEMP_175
+    # TOP_KP_T175 = TOP_KP | TEMP_175 -> gibberish
 
 
 # kinda of a hacky solution to dynamically add the strategies to the class and keep the linter happy
