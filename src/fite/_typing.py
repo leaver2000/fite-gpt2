@@ -40,8 +40,8 @@ ModelConfig = TypedDict(
         "model-name": str,  # gpt2-taf-base1 | gpt2-taf-base1.2021-09-01
         "description": str,
         "metadata-pattern": Optional[str],
-        "additional-tokens": list[str],
-        "additional-special-tokens": list[str],
+        "additional-tokens": Optional[list[str]],
+        "additional-special-tokens": Optional[list[str]],
         "prompt-examples": list[str],
     },
 )

@@ -26,7 +26,7 @@ enum ClassNames {
 /**
  * 
  * @param {string} textAreaValue 
- * @returns 
+ * @returns {string}
  */
 function prepareTextAreaValue(textAreaValue: string): string {
   // split each line into an array -> reduce the text -> join the text

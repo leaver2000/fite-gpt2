@@ -13,6 +13,7 @@ from ..util import CONSTANTS, DEFAULT_DEVICE, ActionStr, ResultRecord, suppress_
 from . import fine_tune
 from .datasets import Dataset, TextFile
 from .filesystem import FileSystem, FileSystemDirectory
+from .results import get_results
 
 # DONT CHANGE
 FRAMEWORK = "pt"
@@ -21,47 +22,47 @@ BASE_MODEL_NAME = "gpt2"
 VERBOSE = False
 
 
-def get_results(
-    fs: FileSystem,
-    prompts: list[str] | None = None,
-    strategies: list[HyperParameterStrategy] | HyperParameterStrategy | None = None,
-) -> list[ResultRecord]:
+# def get_results(
+#     fs: FileSystem,
+#     prompts: list[str] | None = None,
+#     strategies: list[HyperParameterStrategy] | HyperParameterStrategy | None = None,
+# ) -> list[ResultRecord]:
 
-    model, tokenizer = train(fs, push_to_hub=False)
+#     model, tokenizer = train(fs, push_to_hub=False)
 
-    pipe = Pipeline(
-        model=model,
-        tokenizer=tokenizer,
-        device=DEFAULT_DEVICE,
-        max_length=CONSTANTS.MAX_LENGTH,
-        num_return_sequences=1,
-    )
+#     pipe = Pipeline(
+#         model=model,
+#         tokenizer=tokenizer,
+#         device=DEFAULT_DEVICE,
+#         max_length=CONSTANTS.MAX_LENGTH,
+#         num_return_sequences=1,
+#     )
 
-    if not strategies:
-        strategies = list(HyperParameterStrategy)
-    elif isinstance(strategies, HyperParameterStrategy):
-        strategies = [strategies]
+#     if not strategies:
+#         strategies = list(HyperParameterStrategy)
+#     elif isinstance(strategies, HyperParameterStrategy):
+#         strategies = [strategies]
 
-    prompt_examples = fs.config["prompt-examples"]
-    if prompts:
-        prompt_examples += prompts
-    model_name = fs.model_name
-    results = []
-    for strategy in HyperParameterStrategy:
-        if VERBOSE:
-            print(f"***** Running {strategy.name} strategy *****")
-        generated_text_list = pipe.generate(prompt_examples, strategy=strategy)
-        for prompt_text, generated_text in zip(prompt_examples, generated_text_list):
-            result = ResultRecord(
-                model=model_name,
-                prompt_text=prompt_text,
-                generated_text=generated_text,
-                strategy=strategy.name,
-                hyper_parameters=strategy,
-            ).evaluate()
-            results.append(result)
+#     prompt_examples = fs.config["prompt-examples"]
+#     if prompts:
+#         prompt_examples += prompts
+#     model_name = fs.model_name
+#     results = []
+#     for strategy in HyperParameterStrategy:
+#         if VERBOSE:
+#             print(f"***** Running {strategy.name} strategy *****")
+#         generated_text_list = pipe.generate(prompt_examples, strategy=strategy)
+#         for prompt_text, generated_text in zip(prompt_examples, generated_text_list):
+#             result = ResultRecord(
+#                 model=model_name,
+#                 prompt_text=prompt_text,
+#                 generated_text=generated_text,
+#                 strategy=strategy.name,
+#                 hyper_parameters=strategy,
+#             ).evaluate()
+#             results.append(result)
 
-    return results
+#     return results
 
 
 def train(
@@ -86,17 +87,17 @@ def train(
     return model, tokenizer
 
 
-def batch(fs: FileSystem) -> None:
-    # access the prompt examples from the file system config
-    prompt_examples = fs.config["prompt-examples"]
-    # append the cli input to the prompt examples
-    if VERBOSE:
-        print(f"***** Prompt Examples: {prompt_examples} *****")
+# def batch(fs: FileSystem) -> None:
+#     # access the prompt examples from the file system config
+#     prompt_examples = fs.config["prompt-examples"]
+#     # append the cli input to the prompt examples
+#     if VERBOSE:
+#         print(f"***** Prompt Examples: {prompt_examples} *****")
 
-    results = [result.to_dict() for result in get_results(fs, prompt_examples)]
+#     results = [result.to_dict() for result in get_results(fs, prompt_examples)]
 
-    with open("results.json", "w") as f:
-        json.dump(results, f, indent=4)
+#     with open("results.json", "w") as f:
+#         json.dump(results, f, indent=4)
 
 
 def main(fs: FileSystem, push_to_hub=False) -> None:
@@ -163,7 +164,6 @@ def main(fs: FileSystem, push_to_hub=False) -> None:
         )
 
 
-
 if __name__ == "__main__":
 
     import argparse
@@ -198,9 +198,16 @@ if __name__ == "__main__":
     # create the file system which includes multiple FileSystems for several models
     fsd = FileSystemDirectory.load_from_pyproject()
     fs = fsd.get(args.filesystem)
-
-    if args.verbose:
-        main(fs)
-    else:
-        with suppress_stdout():
+    model_params = list(name for name,_ in fs.get_model().named_parameters())
+    print(
+        model_params
+    )
+    if False:
+    
+        if args.verbose:
             main(fs)
+            results = get_results(fs, HyperParameterStrategy["GREEDY"])
+            print(results)
+        else:
+            with suppress_stdout():
+                main(fs)

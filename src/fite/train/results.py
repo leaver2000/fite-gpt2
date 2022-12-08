@@ -7,8 +7,10 @@ from ..pipeline import HyperParameterStrategy, Pipeline
 from ..util import CONSTANTS, DEFAULT_DEVICE
 from .filesystem import FileSystem, FileSystemDirectory
 
+__all__ = ["get_results"]
 
-def create_output_results(fs: FileSystem, strategy:HyperParameterStrategy, out_dir:str|None=None):
+
+def get_results(fs: FileSystem, strategy: HyperParameterStrategy):
     """
     create the output results
     """
@@ -25,7 +27,6 @@ def create_output_results(fs: FileSystem, strategy:HyperParameterStrategy, out_d
         num_return_sequences=1,
     )
 
-
     pipe = Pipeline(
         model=model,
         tokenizer=tokenizer,
@@ -34,15 +35,16 @@ def create_output_results(fs: FileSystem, strategy:HyperParameterStrategy, out_d
         num_return_sequences=1,
     )
 
-
     results = []
     for prompt in prompt_examples:
         completion = pipe.generate(prompt, strategy=strategy)
-        results.append({
-            "prompt": prompt,
-            "completion": "\n".join(completion)[len(prompt) :],
-            "strategy": strategy.name,
-        })
+        results.append(
+            {
+                "prompt": prompt,
+                "completion": "\n".join(completion)[len(prompt) :],
+                "strategy": strategy.name,
+            }
+        )
     return results
 
 
@@ -76,14 +78,16 @@ def main():
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    strategies = [HyperParameterStrategy[k.upper()] for k, v in args.items() if v or do_all]
-    
+    strategies = [
+        HyperParameterStrategy[k.upper()] for k, v in args.items() if v or do_all
+    ]
+
     for strategy in strategies:
         print(f"*****running {strategy} *****")
-        results = create_output_results(fs, strategy)
+        results = get_results(fs, strategy)
         if out_dir:
             out_file = out_dir / f"{strategy.name.lower()}.json"
-            with out_file.open( "w") as f:
+            with out_file.open("w") as f:
                 for result in results:
                     f.write(json.dumps(result))
                     f.write("\n")

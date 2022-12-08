@@ -21,6 +21,7 @@ __all__ = [
     "SpecialTokens",
     "ActionStr",
     "CONSTANTS",
+    "GPT2BaseModels",
 ]
 DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu", index=0)
 
@@ -92,7 +93,7 @@ class SpecialTokens(TokenEnum):
     # pad_token = "[pad]"
     # cls_token = "<|cls|>"
     pad_token = "<|pad|>"
-    # unk_token = "<|unk|>" # may be useful to mask missing header tokens
+    unk_token = "<|unk|>"  # may be useful to mask missing header tokens
     # metadata = "[metadata]"
 
 
@@ -100,8 +101,24 @@ class ActivationFunctions(StrEnum):
     """Activation functions"""
 
     relu = enum.auto()
+    """
+    `ReLU` - Rectified Linear Unit
+
+    `f(x) = max(0, x)`
+
+    RelU does not activate all neurons at the same time, the neurons will only be activated if
+    the output of the previous layer is less than 0.
+    """
     silu = enum.auto()
     gelu = enum.auto()
+    """
+    `GELU` - Gaussian Error Linear Unit
+
+    `f(x) = 0.5 * x * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))`
+
+    GELU is a smooth approximation of the ReLU function and allows for better back-propagation.
+    
+    """
     gelu_new = enum.auto()
     tanh = enum.auto()
 
@@ -123,6 +140,15 @@ class ActionStr(StrEnum):
     COUNT = "count"
     HELP = "help"
     VERSION = "version"
+
+
+class GPT2BaseModels(StrEnum):
+    """GPT2BaseModels are the base models that can be used with the GPT2 model."""
+
+    GPT2 = "gpt2"
+    GPT2_MEDIUM = "gpt2-medium"
+    GPT2_LARGE = "gpt2-large"
+    GPT2_XL = "gpt2-xl"
 
 
 @contextmanager

@@ -110,7 +110,6 @@ class TextFile:
         # TODO: use the metadata pattern to extract metadata from the text
         return __s.str.extract(r"(?:(TXM?\d{2}).+(TNM?\d{2}))").join(__s)
 
-
     @staticmethod
     def _generate_json_lines(
         df: pd.DataFrame,

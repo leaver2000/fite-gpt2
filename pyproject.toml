@@ -104,15 +104,15 @@ prompt-examples = [
 ]
 
 [[tool.fite.models]]
-base-model = "gpt2"
-dataset = "bullets"
-version = "base1"
-model-name = "gpt2-bullets-base1"
-description = "A GPT-2 model trained on epr bullets."
-additional-tokens = []
-additional-special-tokens = []
+base-model = "gpt2-taf-base1"
+dataset = "taf"
+version = "dev1"
+model-name = "gpt2-taf-base1.dev1"
+# description = "A GPT-2 model trained on epr bullets."
+additional-tokens = ["TAF", "\u0120BECMG", "\u0120TEMPO"]
+additional-special-tokens = ["\u0120LAST", "\u0120NO", "\u0120AMDS", "\u0120RMK", "\u0120COR"]
 prompt-examples = [
-    "- Hanchoed",
+    "TAF [TXM01 TNM07] KBLV 071600Z 0716/0822 VRB06KT",
 ]
 
 [tool.setuptools]

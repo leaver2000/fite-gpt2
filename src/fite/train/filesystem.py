@@ -1,15 +1,15 @@
 import dataclasses
 import re
 from pathlib import Path
-
+from typing import Literal, overload
 import attrs
 from datasets import Features, Value
-from transformers import GPT2LMHeadModel, GPT2TokenizerFast
+from transformers import GPT2LMHeadModel, GPT2TokenizerFast, GPT2Config
 
 from .._typing import (
     DatasetDictPath,
     JSONLinesFile,
-    ModelConfig,
+    ModelConfig as FileSystemConfig,
     ModelPath,
     ProjectConfig,
     PyProjectTOML,
@@ -18,35 +18,32 @@ from .._typing import (
     Version,
 )
 from ..pipeline import Pipeline
-from ..util import CONSTANTS, DEFAULT_DEVICE, DataclassBase
+from ..util import (
+    CONSTANTS,
+    DEFAULT_DEVICE,
+    DataclassBase,
+    GPT2BaseModels,
+    StrEnum,
+    ActivationFunctions,
+)
 
 
 @dataclasses.dataclass
-class FileSystem(DataclassBase[str, Path, ModelConfig]):
+class FileSystem(DataclassBase[str, Path, FileSystemConfig]):
+    root_path: Path
     raw_text_file: RawTextFile
     json_lines_file: JSONLinesFile
     dataset_dict_path: DatasetDictPath
     tokenizer_path: TokenizerPath
     model_path: ModelPath
-    config: ModelConfig = attrs.field(on_setattr=attrs.setters.frozen)
+    config: FileSystemConfig = attrs.field(on_setattr=attrs.setters.frozen)
 
-    def get_model(self, **kwargs) -> GPT2LMHeadModel:
-        return GPT2LMHeadModel.from_pretrained(self.model_path, **kwargs)  # type: ignore
-
-    def get_tokenizer(self, **kwargs) -> GPT2TokenizerFast:
-        # You're using a GPT2TokenizerFast tokenizer.
-        # Please note that with a fast tokenizer, using the `__call__` method is faster
-        # than using a method to encode the text followed by a call to the `pad` method to get a padded encoding.
-        return GPT2TokenizerFast.from_pretrained(self.tokenizer_path, **kwargs)
-
-    def get_pipeline(self, **kwargs) -> Pipeline:
-        return Pipeline(
-            model=self.get_model(),
-            tokenizer=self.get_tokenizer(),
-            device=DEFAULT_DEVICE,
-            max_length=CONSTANTS.MAX_LENGTH,
-            num_return_sequences=1,
-            **kwargs,
+    def __post_init__(self):
+        # if the base-model is gpt2 or gpt2-medium then it is not a local model
+        # if the base-model is gpt2-taf-base1 then it is a local model
+        # from the perspective of the filesystem
+        self.model_is_local = (
+            self.config["base-model"] not in GPT2BaseModels.list_values()
         )
 
     @property
@@ -54,7 +51,8 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
         return self.config["model-name"]
 
     @property
-    def base_model(self) -> str:
+    def base_model(self) -> Path | str:
+        # base_model = self.config["base-model"]
         return self.config["base-model"]
 
     @property
@@ -71,14 +69,92 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
         if pattern:
             return re.escape(pattern)
 
+    def get_model(self, **kwargs) -> GPT2LMHeadModel:
+        """fine-tuned model"""
+        return GPT2LMHeadModel.from_pretrained(self.model_path, **kwargs)  # type: ignore
+
+    def get_tokenizer(self, **kwargs) -> GPT2TokenizerFast:
+        """fine-tuned tokenizer"""
+        # You're using a GPT2TokenizerFast tokenizer.
+        # Please note that with a fast tokenizer, using the `__call__` method is faster
+        # than using a method to encode the text followed by a call to the `pad` method to get a padded encoding.
+        return GPT2TokenizerFast.from_pretrained(self.tokenizer_path, **kwargs)
+
+    def get_pipeline(self, **kwargs) -> Pipeline:
+        return Pipeline(
+            model=self.get_model(),
+            tokenizer=self.get_tokenizer(),
+            device=DEFAULT_DEVICE,
+            max_length=CONSTANTS.MAX_LENGTH,
+            num_return_sequences=1,
+            **kwargs,
+        )
+
     def get_features(self) -> Features:
         features = {
             "prompt": Value("string"),
             "completion": Value("string"),
         }
-        # if self.config.get("metadata-pattern"):
-        #     features["metadata"] = Value("string")
         return Features(features)
+
+    @overload
+    def get_pretrained(self, kind: Literal["MODEL"], **kwargs) -> GPT2LMHeadModel:
+        ...
+
+    @overload
+    def get_pretrained(self, kind: Literal["TOKENIZER"], **kwargs) -> GPT2TokenizerFast:
+        ...
+
+    def get_pretrained(
+        self, kind: Literal["MODEL", "TOKENIZER"], **kwargs
+    ) -> GPT2LMHeadModel | GPT2TokenizerFast:
+        """
+        the function is used to load the pretrained model and tokenizer
+        currently only supports models & tokenizers from huggingface or the local file system
+        """
+        # get the base model
+        base_model = self.config["base-model"]
+        # if the model is local, then the path is the root path + base model + kind
+        pretrained_model_name_or_path = str(
+            self.root_path / base_model / kind.lower()
+            if self.model_is_local
+            else base_model
+        )
+
+        if kind == "MODEL":
+            if self.model_is_local:
+                # local model loads from the previous model config
+                config = GPT2Config.from_pretrained(pretrained_model_name_or_path)
+            else:
+                config = GPT2Config(
+                    activation_function=ActivationFunctions.gelu_new,  # ["relu", "silu", "gelu", "tanh", "gelu_new"]
+                    layer_norm_eps=1e-05,
+                )
+
+            return GPT2LMHeadModel.from_pretrained(
+                pretrained_model_name_or_path,
+                config=config,
+            )  # type: ignore
+
+        elif kind == "TOKENIZER":
+            return GPT2TokenizerFast.from_pretrained(
+                pretrained_model_name_or_path,
+                num_labels=2,
+                do_basic_tokenize=False,
+                **kwargs,
+            )
+
+        else:
+            raise ValueError(f"kind must be model or tokenizer, got {kind}")
+
+    @overload
+    def get(self):
+        ...
+
+    @property
+    def get(self):
+        """calls to the underlying FileSystemConfig dictionary"""
+        return self.config.get
 
 
 @dataclasses.dataclass
@@ -116,23 +192,19 @@ class FileSystemDirectory(DataclassBase[str, Path]):
         for config in project_config["models"]:
             # access the model name from the config file
             model_name = config["model-name"]
-            # if it does not exist then use the template
-            # if not model_name:
-            expected_model_name, *_ = "-".join(
-                config[key] for key in ("base-model", "dataset", "version")
-            ).split(".")
-            assert model_name == expected_model_name
-
             model_root = root_path / model_name
+
             if not model_root.exists():
                 model_root.mkdir(parents=True)
+
             self.__fsd[model_name] = FileSystem(
+                root_path=root_path,
                 config=config,
-                raw_text_file=model_root / "training-data.txt",
-                json_lines_file=model_root / "training-data.jsonl",
-                dataset_dict_path=model_root / "dataset",
-                tokenizer_path=model_root / "tokenizer",
-                model_path=model_root / "model",
+                raw_text_file=model_root / FileNames.RAW_TEXT,
+                json_lines_file=model_root / FileNames.JSON_LINES,
+                dataset_dict_path=model_root / FileNames.DATASET_DICT,
+                tokenizer_path=model_root / FileNames.TOKENIZER,
+                model_path=model_root / FileNames.MODEL,
             )
 
     @classmethod
@@ -146,7 +218,7 @@ class FileSystemDirectory(DataclassBase[str, Path]):
         return cls.from_pyproject(PyProjectTOML.load(path))
 
     @staticmethod
-    def _format_model_name(config: ModelConfig) -> str:
+    def _format_model_name(config: FileSystemConfig) -> str:
         return f"{config['base-model']}-{config['dataset']}-{config['dataset']}"
 
     def get(self, name: str) -> FileSystem:
@@ -166,3 +238,13 @@ class FileSystemDirectory(DataclassBase[str, Path]):
 
     def list_model_names(self) -> list[str]:
         return list(self.__fsd.keys())
+
+
+class FileNames(StrEnum):
+    """the file names for the file system"""
+
+    RAW_TEXT = "training-data.txt"
+    JSON_LINES = "training-data.jsonl"
+    DATASET_DICT = "dataset"
+    TOKENIZER = "tokenizer"
+    MODEL = "model"

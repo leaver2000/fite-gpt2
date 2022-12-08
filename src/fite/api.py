@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from ._enum import StrEnum
 from .pipeline import PipelineEngine, Strategies
+from .util import SpecialTokens
 
 app = FastAPI()
 app.add_middleware(
@@ -29,9 +30,29 @@ class Metadata(BaseModel):
     TN: float | None = None
     issueDatetime: datetime = datetime.now()
 
+
 class Prompt(BaseModel):
-    metadata: Metadata = Metadata(TX=0,TN=0,issueDatetime=datetime.now())
+    metadata: Metadata = Metadata(TX=0, TN=0, issueDatetime=datetime.now())
     text: str = "TAF KBLV 201853Z 2019/2118 00000KT P6SM SCT250"
+
+    def prepare_text(self):
+        def format_metadata(md: Metadata) -> str:
+
+            temperature_template = "{TX:02} {TN:02}"
+            if md.TX is None or md.TN is None:
+                temperature_group = (
+                    f"{SpecialTokens.unk_token} {SpecialTokens.unk_token}"
+                )
+            else:
+                temperature_group = temperature_template.format(
+                    TX=md.TX, TN=md.TN
+                ).replace("-", "M")
+
+            return f"TAF [{temperature_group} {md.issueDatetime:%Y-%m-%d}]"
+
+        # adding the metadata to the first line of the forecast
+        text = format_metadata(self.metadata) + " " + self.text.lstrip("TAF").strip()
+        return text
 
 
 @app.get("/")
@@ -59,26 +80,38 @@ def get_strategies(name: str) -> str:
     return Strategies[name].value
 
 
-def format_metadata(md:Metadata) -> str:
-    def make_temp(prefix:str, temp:float | None) -> str:
-        if temp is  None:
-            return "<|unk|>"
-        else:
-            return f'{prefix}{int(temp):02}'.replace("-","M")
-    tx_ = make_temp("TX", md.TX)
-    tn_ = make_temp("TN", md.TN)
+def format_metadata(md: Metadata) -> str:
 
-    return f"TAF [{tx_} {tn_} {md.issueDatetime:%Y-%m-%d}]"
+    temperature_template = "{TX:02} {TN:02}"
+    if md.TX is None or md.TN is None:
+        temperature_group = f"{SpecialTokens.unk_token} {SpecialTokens.unk_token}"
+    else:
+        temperature_group = temperature_template.format(TX=md.TX, TN=md.TN).replace(
+            "-", "M"
+        )
+    # def make_temp(prefix:str, temp:float | None) -> str:
+    #     if temp is  None:
+    #         return SpecialTokens.unk_token
+    #     else:
+    #         return f'{prefix}{int(temp):02}'.replace("-","M")
 
+    # tx_ = make_temp("TX", md.TX)
+    # tn_ = make_temp("TN", md.TN)
+
+    return f"TAF [{temperature_group} {md.issueDatetime:%Y-%m-%d}]"
+
+
+def prepare_prompt(prompt: Prompt) -> str:
+    # adding the metadata to the first line of the forecast
+    text = format_metadata(prompt.metadata) + " " + prompt.text.lstrip("TAF").strip()
+    return text
 
 
 @app.post("/generate", response_model=list[str])
-def generate(
-    prompt: Prompt, model: Pipelines, strategy: Strategies
-) ->  list[str]:
+def generate(prompt: Prompt, model: Pipelines, strategy: Strategies) -> list[str]:
     """
     Each Prompt.text should begin with either the 4-letter ICAO or AMD ICAO
-    
+
     Example:
     >>> {
         "metadata": {
@@ -90,9 +123,11 @@ def generate(
     }
     """
     # adding the metadata to the first line of the forecast
-    text = (format_metadata(prompt.metadata) +" "+ prompt.text.lstrip("TAF").strip())
+    text = (
+        prompt.prepare_text()
+    )  # prepare_prompt(prompt) #(format_metadata(prompt.metadata) +" "+ prompt.text.lstrip("TAF").strip())
     # generating the forecast
     first, *rest = engine.generate(model, text, strategy=strategy)
     # removing the metadata from the first line of the forecast
-    first = re.sub(r"(?<=^TAF)\s+\[.*\]\s+"," ",first)
+    first = re.sub(r"(?<=^TAF)\s+\[.*\]\s+", " ", first)
     return [first, *rest]
