@@ -9,12 +9,13 @@ import "./style.css";
 const ACTIONS = {
   TAB: "Tab",
   ENTER: "Enter",
-  contain: function (key: string) {
+  contain:  function(key: any):boolean {
     return Object.values(this)
       .filter((v) => typeof v === "string")
       .includes(key);
-  } as (key: string) => boolean,
+  },
 } as const;
+
 /**
  * 
  */
