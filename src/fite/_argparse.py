@@ -49,6 +49,12 @@ class ArgumentParser(Generic[Ns], argparse.ArgumentParser):
     def parse_args(self, *args: str) -> Ns:
         return super().parse_args(*args, namespace=self._namespace)
 
+    def add_argument(self, *name_or_flags: str, **kwargs):
+        return super().add_argument(
+            *(name.replace("_", "-") for name in name_or_flags),
+            **kwargs,
+        )
+
 
 @dataclasses.dataclass
 class DefaultNamespace(argparse.Namespace):

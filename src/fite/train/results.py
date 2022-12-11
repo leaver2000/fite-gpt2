@@ -45,20 +45,14 @@ def get_results(fs: FileSystem, strategy: HyperParameterStrategy):
     return results
 
 
-@dataclasses.dataclass
-class Namespace(DefaultNamespace):
-    filesystem: str = argument(help="The dataset to train")
-    all: bool = argument(False, action="store_true")
-    save_results: bool = argument(False, action="store_true", help="Save the results")
-
-
-def main(ns: Namespace) -> None:
+def main(ns: "Namespace") -> None:
     # load the model filesystem
     fs = FileSystemDirectory.load_from_pyproject("pyproject.toml").get(ns.filesystem)
 
     out_dir = None
     if ns.save_results:
-        out_dir = Path.cwd() / "results" / ns.filesystem
+        # TODO: make the pull the store filesystem.config
+        out_dir = Path.cwd() / "store" / ns.filesystem / "results"
         out_dir.mkdir(parents=True, exist_ok=True)
     #
     if ns.all:
@@ -69,6 +63,7 @@ def main(ns: Namespace) -> None:
             for strategy in HyperParameterStrategy
             if getattr(ns, strategy.name.lower(), False)
         ]
+
     for strategy in strategies:
         print(f"***** {strategy} *****")
         results = get_results(fs, strategy)
@@ -81,6 +76,13 @@ def main(ns: Namespace) -> None:
                 for result in results:
                     f.write(json.dumps(result))
                     f.write("\n")
+
+
+@dataclasses.dataclass
+class Namespace(DefaultNamespace):
+    filesystem: str = argument(help="The dataset to train")
+    all: bool = argument(False, action="store_true")
+    save_results: bool = argument(False, action="store_true", help="Save the results")
 
 
 if __name__ == "__main__":
