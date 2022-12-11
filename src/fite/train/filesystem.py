@@ -243,7 +243,6 @@ class FileSystemDirectory(DataclassBase[str, Path]):
     ) -> "FileSystemDirectory":
         return cls.from_pyproject(PyProjectTOML.load(path))
 
-
     def get(self, name: str) -> FileSystem:
         fs = self.__fsd.get(name)
         if fs is None:

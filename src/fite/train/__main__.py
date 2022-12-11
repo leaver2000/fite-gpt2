@@ -104,13 +104,13 @@ def main(ns: Namespace) -> None:
             max_length=CONSTANTS.MAX_LENGTH,
             num_return_sequences=1,
         )
-        
+
         for strategy in [HyperParameterStrategy.GREEDY]:
             print(f"***** {strategy} *****")
             for example in prompt_examples:
                 results = pipeline.generate(example, strategy=strategy)
-                print(example + "..." + '\n'.join(results)[len(example):], "\n")
-            
+                print(example + "..." + "\n".join(results)[len(example) :], "\n")
+
     else:
         with suppress_stdout():
             train(fs)
