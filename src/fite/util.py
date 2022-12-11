@@ -116,8 +116,7 @@ class ActivationFunctions(StrEnum):
 
     `f(x) = 0.5 * x * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))`
 
-    GELU is a smooth approximation of the ReLU function and allows for better back-propagation.
-    
+    GELU is a smooth approximation of the ReLU function and allows for better back-propagation.    
     """
     gelu_new = enum.auto()
     tanh = enum.auto()
