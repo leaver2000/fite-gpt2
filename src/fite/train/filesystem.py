@@ -1,7 +1,9 @@
+import argparse
+
 import dataclasses
 import re
 from pathlib import Path
-from typing import Literal, overload
+from typing import Literal, overload, Optional
 import attrs
 from datasets import Features, Value
 from transformers import GPT2LMHeadModel, GPT2TokenizerFast, GPT2Config
@@ -17,7 +19,7 @@ from .._typing import (
     TokenizerPath,
     Version,
 )
-from ..pipeline import Pipeline
+from ..pipeline import Pipeline, HyperParameterStrategy
 from ..util import (
     CONSTANTS,
     DEFAULT_DEVICE,
@@ -26,6 +28,30 @@ from ..util import (
     StrEnum,
     ActivationFunctions,
 )
+
+__all__ = ["FileSystem", "FileSystemDirectory", "Namespace"]
+
+
+class Namespace(argparse.Namespace):
+    filesystem: str
+    all: bool
+    out_dir: Optional[str]
+    verbose: bool = False
+
+    def iterstrategies(self):
+        if self.all:
+            yield from HyperParameterStrategy
+        else:
+            for strategy in HyperParameterStrategy:
+                if getattr(self, strategy.name.lower()):
+                    yield strategy
+
+    @classmethod
+    def with_strategies(cls, parser: argparse.ArgumentParser) -> "Namespace":
+        parser.add_argument("--all", action="store_true")
+        for strategy in HyperParameterStrategy:
+            parser.add_argument(f"--{strategy.name.lower()}", action="store_true")
+        return cls()
 
 
 @dataclasses.dataclass
@@ -217,9 +243,6 @@ class FileSystemDirectory(DataclassBase[str, Path]):
     ) -> "FileSystemDirectory":
         return cls.from_pyproject(PyProjectTOML.load(path))
 
-    @staticmethod
-    def _format_model_name(config: FileSystemConfig) -> str:
-        return f"{config['base-model']}-{config['dataset']}-{config['dataset']}"
 
     def get(self, name: str) -> FileSystem:
         fs = self.__fsd.get(name)

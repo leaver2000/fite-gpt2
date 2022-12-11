@@ -12,14 +12,13 @@ from transformers import (
     Trainer,
     TrainingArguments as _TrainingArguments,
     AdamW,
-    
 )
 
-from ..util import SpecialTokens,  CONSTANTS
+# project imports
+from ..util import SpecialTokens, CONSTANTS
 
 # training module imports
 from .filesystem import DEFAULT_DEVICE, FileSystem
-
 
 
 @dataclasses.dataclass
@@ -48,9 +47,9 @@ class TrainingArguments(_TrainingArguments):
         return TrainingArguments(
             output_dir=str(fs.model_path),
             run_name=fs.model_name,
-            # do_train=True,
-            # do_eval=True,
-            # do_predict=True,
+            do_train=True,
+            do_eval=True,
+            do_predict=True,
         )
 
 
@@ -98,7 +97,7 @@ class AdamWOptimizerConfig(dict):
     def pipe(
         self, /, **kwargs: Unpack[_AdamWOptimizerKwargs]
     ) -> "AdamWOptimizerConfig":
-        return AdamWOptimizerConfig(**{**self, **kwargs}) 
+        return AdamWOptimizerConfig(**{**self, **kwargs})
 
 
 class OptimizersType(AdamWOptimizerConfig, enum.Enum):
@@ -112,14 +111,14 @@ class OptimizersType(AdamWOptimizerConfig, enum.Enum):
     FAST_LEARNER = BASE_CONFIG.pipe(lr=1e-4)
     SLOW_LEARNER = BASE_CONFIG.pipe(lr=1e-5)
 
+
 @dataclasses.dataclass
 class AdamWOptimizer(AdamW):
     params: Iterable[torch.nn.Parameter]
     optimizer_config: AdamWOptimizerConfig
+
     def __post_init__(self):
         super().__init__(self.params, **self.optimizer_config)
-
-
 
 
 def model(

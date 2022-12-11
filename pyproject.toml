@@ -37,7 +37,16 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Topic :: Utilities",
 ]
-
+[project.optional-dependencies]
+server = ["uvicorn >= 0.20.0"]
+# [setuptools] https://setuptools.pypa.io/en/latest/userguide/datafiles.html
+[tool.setuptools] 
+include-package-data = true
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.setuptools.package-data]
+fite = ["py.typed"]
+# [fite]
 [tool.fite]
 root-path = "store/"
 
@@ -111,16 +120,74 @@ model-name = "gpt2-taf-base1.dev1"
 # description = "A GPT-2 model trained on epr bullets."
 additional-tokens = ["TAF", "\u0120BECMG", "\u0120TEMPO"]
 additional-special-tokens = ["\u0120LAST", "\u0120NO", "\u0120AMDS", "\u0120RMK", "\u0120COR"]
+# in this training set 5, 3 of which were amened TAFs were added for the KBLV and KADW 
+# the 2 forecast we diffrent enough from each other for this evaluation.  The objective
+# is to see if the model can learn to generate a forecast that is similar to the previous
+# while factoring ammendments with out contamitation from other forecasts.
+# The current forecast were not included in the training set.
+# [KBLV]
+# ---- CURRENT KBLV forecast ----
+# ISSUED FORECAST: @ 2022-12-08T06-00Z
+# TAF KBLV 081600Z 0816/0922 07006KT 1600 -RA BR OVC006 QNH3021INS
+# BECMG 0822/0823 07006KT 1200 BR OVC005 QNH3011INS
+# BECMG 0916/0917 27015G20KT 6000 BR BKN014 QNH3012INS
+# BECMG 0917/0918 27012G18KT 9999 NSW SCT050 QNH3008INS
+# BECMG 0920/0921 28015G20KT 9999 BKN030 QNH3009INS TX10/0916Z TN07/0816Z
+# ---- context ----
+# the previous forecast was acutally incorrect with rain stopping at 1600Z
+# so that forecast was ameneded extending the rain till 1800Z
+# ---- AMENDED FORECAST: @ 2022-12-08T12-10Z ----
+# TAF AMD KBLV 081210Z 0812/0914 03006KT 4800 -RA OVC008 QNH3018INS
+# BECMG 0813/0814 07006KT 8000 -SHRA BKN009 OVC020 QNH3016INS
+# BECMG 0817/0818 08006KT 9999 NSW BKN020 OVC050 QNH3004INS TX09/0816Z TN05/0813Z
+# ---- 0800Z FORECAST: @ 2022-12-08T08-00Z ----
+# TAF KBLV 080800Z 0808/0914 03006KT 4800 -RA SCT020 OVC030 QNH3025INS
+# BECMG 0810/0811 05006KT 8000 -DZ SCT010 OVC020 QNH3019INS
+# TEMPO 0811/0813 4800 -RA OVC010
+# BECMG 0813/0814 07006KT 8000 BR BKN010 OVC020 QNH3016INS
+# BECMG 0815/0816 08006KT 9999 NSW BKN020 OVC050 QNH3004INS TX09/0816Z TN05/0813Z
+# ---- prompt ----
+# TAF [TXM10 TNM07] KBLV 081600Z 0816/0922 07006KT 1600
+# ---- expected output ----
+# TAF [TXM10 TNM07] KBLV 081600Z 0816/0922 07006KT 1600 -RA BR OVC006 QNH3021INS
+
+# [KADW]
+# ---- CURRENT KADW forecast ----
+# ISSUED FORECAST: @ 2022-12-08T17-00Z
+# TAF KADW 081700Z 0817/0923 04010KT 9999 FEW030 BKN200 QNH3026INS <-----------
+# BECMG 0823/0824 36008KT 9999 BKN020 OVC120 QNH3024INS                        |
+# BECMG 0918/0919 02010KT 9999 SCT025 QNH3025INS TX13/0819Z TN05/0912Z         |
+# ---- AMENDED 1306Z: @ 2022-12-08T13-06Z ----                                 |
+# TAF AMD KADW 081306Z 0813/0915 33010KT 9999 BKN030 BKN250 QNH3024INS         |
+# BECMG 0817/0818 35012KT 9999 BKN020 OVC160 QNH3020INS     ------------------>
+# BECMG 0822/0823 01008KT 9999 SCT025 OVC120 QNH3024INS    
+# BECMG 0906/0907 02010KT 9999 BKN025 600251 QNH3026INS TX11/0819Z TN06/0908Z
+# ---- AMENDED 1040Z: @ 2022-12-08T10-40Z ----
+# TAF AMD KADW 081040Z 0810/0915 33004KT 9999 BKN030 OVC250 QNH3020INS
+# BECMG 0812/0813 34010G20KT 9999 BKN030 BKN250 QNH3025INS
+# BECMG 0817/0818 35012KT 9999 BKN020 OVC160 QNH3020INS
+# BECMG 0822/0823 01008KT 9999 SCT025 OVC120 QNH3024INS
+# BECMG 0906/0907 02010KT 9999 BKN025 600251 QNH3026INS TX11/0819Z TN06/0908Z
+# ---- FORECAST 0900Z @ 2022-12-08T09-00Z ----
+# TAF KADW 080900Z 0809/0915 33004KT 1600 BR BKN002 OVC250 QNH3020INS
+# TEMPO 0809/0813 3200 BR SCT002
+# BECMG 0812/0813 34010G20KT 9999 NSW BKN015 BKN250 QNH3025INS
+# BECMG 0817/0818 35012KT 9999 BKN020 OVC160 QNH3020INS
+# BECMG 0822/0823 01008KT 9999 SCT025 OVC120 QNH3024INS
+# BECMG 0906/0907 02010KT 9999 BKN025 600251 QNH3026INS TX11/0819Z TN06/0908Z
+
+
+
 prompt-examples = [
-    "TAF [TXM01 TNM07] KBLV 071600Z 0716/0822 VRB06KT",
+    # challenge 1.0: predict the a reduced visibility; context -> previous forecast
+    "TAF [TXM10 TNM07] KBLV 081600Z 0816/0922 07006KT",
+    # challenge 1.1: present weather; context -> previous forecast & reduced visibility
+    "TAF [TXM10 TNM07] KBLV 081600Z 0816/0922 07006KT 1600",
+    # challenge 1.2: timing; context -> previous forecast & reduced visibility & rain & low ceiling & BECMG
+    "TAF [TXM10 TNM07] KBLV 081600Z 0816/0922 07006KT 1600 -RA BR OVC006 QNH3021INS\nBECMG", # ... 0822/0823
+    # challenge 2.0: predict the a unrestricted visibility; context -> previous forecast
+    "TAF [TX13 TN05] KADW 081700Z 0817/0923 04010KT", # ...
+    # challenge 2.1: timing and ceiling; context -> previous forecast & unrestricted visibility & BECMG
+    "TAF [TX13 TN05] KADW 081700Z 0817/0923 04010KT 9999 FEW030 BKN200 QNH3026INS\nBECMG", # ... 0823/0824
 ]
 
-[tool.setuptools]
-# https://setuptools.pypa.io/en/latest/userguide/datafiles.html
-include-package-data = true
-
-[tool.setuptools.packages.find]
-where = ["src","store/models/gpt2-taf-0.1.0"]
-
-[tool.setuptools.package-data]
-mypkg = ["*"]

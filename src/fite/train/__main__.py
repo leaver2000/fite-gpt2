@@ -1,19 +1,16 @@
-import json
+import argparse
 from typing import Literal
 
 import torch
-from transformers import GPT2LMHeadModel, GPT2TokenizerFast
 
 # project imports
-from .. import __version__ as VERSION
 from ..pipeline import HyperParameterStrategy, Pipeline
-from ..util import CONSTANTS, DEFAULT_DEVICE, ActionStr, ResultRecord, suppress_stdout
+from ..util import CONSTANTS, suppress_stdout, DEFAULT_DEVICE
 
 # training module imports
 from . import fine_tune
 from .datasets import Dataset, TextFile
 from .filesystem import FileSystem, FileSystemDirectory
-from .results import get_results
 
 # DONT CHANGE
 FRAMEWORK = "pt"
@@ -22,85 +19,13 @@ BASE_MODEL_NAME = "gpt2"
 VERBOSE = False
 
 
-# def get_results(
-#     fs: FileSystem,
-#     prompts: list[str] | None = None,
-#     strategies: list[HyperParameterStrategy] | HyperParameterStrategy | None = None,
-# ) -> list[ResultRecord]:
-
-#     model, tokenizer = train(fs, push_to_hub=False)
-
-#     pipe = Pipeline(
-#         model=model,
-#         tokenizer=tokenizer,
-#         device=DEFAULT_DEVICE,
-#         max_length=CONSTANTS.MAX_LENGTH,
-#         num_return_sequences=1,
-#     )
-
-#     if not strategies:
-#         strategies = list(HyperParameterStrategy)
-#     elif isinstance(strategies, HyperParameterStrategy):
-#         strategies = [strategies]
-
-#     prompt_examples = fs.config["prompt-examples"]
-#     if prompts:
-#         prompt_examples += prompts
-#     model_name = fs.model_name
-#     results = []
-#     for strategy in HyperParameterStrategy:
-#         if VERBOSE:
-#             print(f"***** Running {strategy.name} strategy *****")
-#         generated_text_list = pipe.generate(prompt_examples, strategy=strategy)
-#         for prompt_text, generated_text in zip(prompt_examples, generated_text_list):
-#             result = ResultRecord(
-#                 model=model_name,
-#                 prompt_text=prompt_text,
-#                 generated_text=generated_text,
-#                 strategy=strategy.name,
-#                 hyper_parameters=strategy,
-#             ).evaluate()
-#             results.append(result)
-
-#     return results
+class Namespace(argparse.Namespace):
+    filesystem: str
+    verbose: bool
+    force: bool
 
 
-def train(
-    fs: FileSystem, push_to_hub: bool = False
-) -> tuple[GPT2LMHeadModel, GPT2TokenizerFast]:
-
-    if not fs.tokenizer_path.exists():
-        if VERBOSE:
-            print("***** Tokenizer not found, creating tokenizer... *****")
-        fine_tune.tokenizer(fs)
-
-    tokenizer: GPT2TokenizerFast = GPT2TokenizerFast.from_pretrained(fs.tokenizer_path)
-
-    if not fs.model_path.exists():
-        if VERBOSE:
-            print("***** Model not found, creating model... *****")
-        fine_tune.model(fs, tokenizer, push_to_hub=push_to_hub)
-    # load the model from the saved path
-    model: GPT2LMHeadModel = GPT2LMHeadModel.from_pretrained(fs.model_path)  # type: ignore
-    model.resize_token_embeddings(len(tokenizer))
-
-    return model, tokenizer
-
-
-# def batch(fs: FileSystem) -> None:
-#     # access the prompt examples from the file system config
-#     prompt_examples = fs.config["prompt-examples"]
-#     # append the cli input to the prompt examples
-#     if VERBOSE:
-#         print(f"***** Prompt Examples: {prompt_examples} *****")
-
-#     results = [result.to_dict() for result in get_results(fs, prompt_examples)]
-
-#     with open("results.json", "w") as f:
-#         json.dump(results, f, indent=4)
-
-
-def main(fs: FileSystem, push_to_hub=False) -> None:
+def train(fs: FileSystem, push_to_hub=False) -> None:
     """
     numbered bullet points in markdown format
 
@@ -164,50 +89,38 @@ def main(fs: FileSystem, push_to_hub=False) -> None:
         )
 
 
+def main(ns: Namespace) -> None:
+    fs = FileSystemDirectory.load_from_pyproject("pyproject.toml").get(ns.filesystem)
+
+    if ns.verbose:
+        train(fs)
+        model = fs.get_model()
+        tokenizer = fs.get_tokenizer()
+        prompt_examples = fs.config["prompt-examples"]
+        pipeline = Pipeline(
+            model=model,
+            tokenizer=tokenizer,
+            device=DEFAULT_DEVICE,
+            max_length=CONSTANTS.MAX_LENGTH,
+            num_return_sequences=1,
+        )
+        
+        for strategy in [HyperParameterStrategy.GREEDY]:
+            print(f"***** {strategy} *****")
+            for example in prompt_examples:
+                results = pipeline.generate(example, strategy=strategy)
+                print(example + "..." + '\n'.join(results)[len(example):], "\n")
+            
+    else:
+        with suppress_stdout():
+            train(fs)
+
+
 if __name__ == "__main__":
+    import sys
 
-    import argparse
-
-    class Namespace(argparse.Namespace):
-        def __init__(self, **kwargs):
-            for name in kwargs:
-                print(name)
-                setattr(self, name.replace("-", "_"), kwargs[name])
-
-        file_system: str
-        function: str
-        version: str
-        text: str | list[str]
-        dataset_name: str
-        push_to_hub: bool
-        verbose: bool
-
-    parser = argparse.ArgumentParser(prog="code-predictor")
+    parser = argparse.ArgumentParser(prog="model-trainer")
     parser.add_argument("filesystem", help="The dataset to train")
-    parser.add_argument("--dataset-name", type=str, default="gpt2-taf-base1")
-    parser.add_argument(
-        "--text", type=str, default="TAF KBLV 010600Z 0106/0212 270020G35KT"
-    )
-    parser.add_argument("--version", type=str, default=VERSION)
-
-    parser.add_argument("--verbose", action=ActionStr.FALSE)
-    parser.add_argument("--push-to-hub", action=ActionStr.FALSE)
-
-    args = parser.parse_args(namespace=Namespace())
-
-    # create the file system which includes multiple FileSystems for several models
-    fsd = FileSystemDirectory.load_from_pyproject()
-    fs = fsd.get(args.filesystem)
-    model_params = list(name for name,_ in fs.get_model().named_parameters())
-    print(
-        model_params
-    )
-    if False:
-    
-        if args.verbose:
-            main(fs)
-            results = get_results(fs, HyperParameterStrategy["GREEDY"])
-            print(results)
-        else:
-            with suppress_stdout():
-                main(fs)
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    sys.exit(main(parser.parse_args(namespace=Namespace())))
