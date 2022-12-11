@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom";
+import { createRoot  } from "react-dom/client";
 //
 import Controller from "./context";
 import { TextAreaStack, TextInputLayer, TextCompletionLayer } from "./components";
@@ -39,6 +40,7 @@ function Navbar() {
     padding: 2.5,
     backgroundColor: "#333",
   };
+  
   return (
     <ul style={style}>
       <Selector selection={Selections.model} />
@@ -72,16 +74,16 @@ function App() {
   );
 }
 
-ReactDOM.render(
+const container = document.getElementById('root');
+const root = createRoot(container!);
+root.render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>,
-  document.getElementById("root")
+  </React.StrictMode>
 );
-
-// Hot Module Replacement (HMR) - Remove this snippet to remove HMR.
-// Learn more: https://snowpack.dev/concepts/hot-module-replacement
-if (import.meta.hot) {
-  import.meta.hot.accept();
-}
-// export default FITE;
+// // Hot Module Replacement (HMR) - Remove this snippet to remove HMR.
+// // Learn more: https://snowpack.dev/concepts/hot-module-replacement
+// if (import.meta.hot) {
+//   import.meta.hot.accept();
+// }
+// // export default FITE;
