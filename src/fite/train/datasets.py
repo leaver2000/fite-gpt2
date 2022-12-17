@@ -134,8 +134,7 @@ class TextFile:
             prompt = SpecialTokens.bos_token
             for i, text in enumerate(text_list):
                 prompt += f"{text} "
-                completion = " ".join(text_list[i + 1 :])
-                if completion:
+                if completion := " ".join(text_list[i + 1 :]):
                     yield prompt, completion + SpecialTokens.eos_token
 
     def to_dataframe(self) -> pd.DataFrame:

@@ -32,8 +32,8 @@ class StrEnum(str, EnumBase):
     def __str__(self) -> str:
         return str(self.value)
 
-    def _generate_next_value_(name: str, *_) -> str:
-        return name
+    def _generate_next_value_(self, *_) -> str:
+        return self
 
 
 class RegexEnum(StrEnum):

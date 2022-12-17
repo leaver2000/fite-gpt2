@@ -67,8 +67,7 @@ class FileSystem(DataclassBase[str, Path, ModelConfig]):
 
     @property
     def metadata_pattern(self) -> str | None:
-        pattern = self.config.get("metadata-pattern")
-        if pattern:
+        if pattern := self.config.get("metadata-pattern"):
             return re.escape(pattern)
 
     def get_features(self) -> Features:

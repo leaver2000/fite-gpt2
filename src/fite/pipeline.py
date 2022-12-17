@@ -332,11 +332,9 @@ class Pipeline(TextGenerationPipeline):
 
         if not isinstance(strategy, HyperParameterStrategy):
             strategy = HyperParameterStrategy[
-                strategy
-                if strategy
-                else random.choice(HyperParameterStrategy.list_members())
+                strategy or random.choice(HyperParameterStrategy.list_members())
             ]
-            # type: ignore
+                # type: ignore
 
         # BatchEncoding provides the token_ids and attention_mask
         encoding = self.encode(text, padding=padding, truncation=truncation)

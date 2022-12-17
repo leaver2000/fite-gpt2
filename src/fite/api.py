@@ -57,8 +57,5 @@ def get_strategies(name: str) -> str:
 def generate(
     prompt: Prompt | list[Prompt], model: Pipelines, strategy: Strategies
 ) -> list[list[str]] | list[str]:
-    if isinstance(prompt, list):
-        text = [p.text for p in prompt]
-    else:
-        text = prompt.text
+    text = [p.text for p in prompt] if isinstance(prompt, list) else prompt.text
     return engine.generate(model, text, strategy=strategy)
